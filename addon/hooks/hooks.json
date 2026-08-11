@@ -1,0 +1,24 @@
+{
+  "harness-guard": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "run_command|bash|shell|exec",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python hooks/harness_guard.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "python hooks/harness_guard.py",
+        "timeout": 10
+      }
+    ]
+  }
+}

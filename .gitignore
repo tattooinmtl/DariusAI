@@ -1,0 +1,94 @@
+# What stays out of the repository, and why.
+#
+# The rule applied here: ignore what can be regenerated, what is machine-
+# specific, and what is a secret. Everything else is committed — including
+# the image assets, because for a project whose only copy lives on one
+# machine, git is the backup, and an ignored file is an unbacked-up file.
+
+# --- Python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+env/
+dist/
+build/
+
+# --- Secrets ----------------------------------------------------------------
+# The brain (and its DPAPI-encrypted provider keys) lives in ~/.dariusai,
+# outside this tree — but a stray .env here would not be encrypted at all.
+.env
+.env.*
+!.env.example
+
+# --- Local state and databases ----------------------------------------------
+# brain.db is the skill index; skills/ is its markdown store. Both belong to
+# a brain directory, normally ~/.dariusai, but are ignored here in case one
+# is ever created inside the repo. *.db also covers the data/app.db that
+# workbench projects create.
+#
+# /skills/ is ROOT-ANCHORED deliberately. Written bare as `skills/` it matched
+# every directory of that name at any depth — which silently excluded all 65
+# files under addon/skills/, the library this project ships. The leading slash
+# keeps the original intent (a brain store accidentally created at the repo
+# root) without swallowing the addon tree.
+brain.db
+/skills/
+*.db
+*.db-journal
+*.sqlite3
+
+# --- Runtime and tooling output ---------------------------------------------
+# launch_error.log is written only when the launcher dies under pythonw.
+# .dariusai-scratch/ is where run_snippet writes code blocks before running
+# them. _dom_dump.html comes from the headless UI driver.
+launch_error.log
+*.log
+.dariusai-scratch/
+_dom_dump.html
+
+# --- Generated projects -----------------------------------------------------
+# The workbench lives at C:/DariusAIWorkbench, outside this tree. This is a
+# guard in case someone points workbench_root inside the repo.
+DariusAIWorkbench/
+
+# --- Node ------------------------------------------------------------------
+node_modules/
+
+# --- Agent run artifacts ----------------------------------------------------
+# Downloaded and generated during an early agent run, when the project root
+# was still the working directory. Not part of the app. Rooted with a
+# leading slash so a legitimately-committed file of the same name inside a
+# subdirectory is unaffected.
+/feed.json
+/quakes.html
+
+# --- Internal documentation --------------------------------------------------
+# Only the README is published. The engineering record and the operating
+# contract stay on this machine: they carry the defect list, the architecture
+# notes and the working instructions, and none of that belongs in a shared
+# checkout. Consequence, accepted deliberately: these files are NOT backed up
+# by git, so they live and die with the local disk.
+/CLAUDE.md
+/dariusai-harnessUpdated.md
+/dariusai-harnessOLD.md
+/BrainFIX.md
+/AuditFullMAX.md
+!/README.md
+
+# --- Editors and OS ---------------------------------------------------------
+.idea/
+*.swp
+*.swo
+*~
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Deliberately NOT ignored:
+#   brain.png, logo2.png   - build inputs (icons, splash)
+#   logo1.png, *.png notes - reference material worth keeping backed up
+#   version_lock.json      - pairs the source fingerprint with its version
+#   tools/, tests/         - the verifier and the suite are part of the app

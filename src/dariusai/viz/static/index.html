@@ -1,0 +1,3513 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DariusAI</title>
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="stylesheet" href="/vendor/codemirror/codemirror.min.css">
+<link rel="stylesheet" href="/vendor/codemirror/theme-dracula.min.css">
+<link rel="stylesheet" href="/vendor/codemirror/addon-dialog.min.css">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #05060f; overflow: hidden;
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif; color: #e6e9f5; }
+  button { font-family: inherit; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+
+  /* ---- app shell: titlebar + menubar ------------------------------- */
+  #app { display: flex; flex-direction: column; width: 100%; height: 100%; }
+  /* The window is dragged by the `pywebview-drag-region` class on #titlebar
+     (see the markup below), not by `-webkit-app-region: drag` — WebView2
+     ignores that CSS unless Edge is started with the
+     msWebView2EnableDraggableRegions feature flag, which is why the window
+     used to be stuck in place. The app-region rules are kept only so the
+     same page still drags correctly if it's ever hosted in Electron. */
+  #titlebar { height: 34px; flex: none; display: flex; align-items: center; background: #0a0b18;
+    border-bottom: 1px solid rgba(255,255,255,0.06); -webkit-app-region: drag; user-select: none; cursor: default; }
+  #titlebar .brand { display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 12.5px; font-weight: 600;
+    letter-spacing: .03em; color: #cfd6ff; }
+  #titlebar .brand .icon { font-size: 15px; filter: drop-shadow(0 0 4px #6ea8ff); }
+  /* Pre-release badge: amber while the version is an alpha/beta, so it reads
+     as "this is not finished yet" at a glance; plain grey once it isn't. */
+  #titlebar .brand .version { font-size: 10px; font-weight: 600; letter-spacing: .04em; color: #6c7399;
+    border: 1px solid rgba(255,255,255,0.12); border-radius: 9px; padding: 1px 7px; }
+  #titlebar .brand .version.prerelease { color: #f0b45f; border-color: rgba(240,180,95,0.35);
+    background: rgba(240,180,95,0.08); }
+  #titlebar .spacer { flex: 1; }
+  #titlebar .win-btn { -webkit-app-region: no-drag; width: 44px; height: 34px; border: none; background: none;
+    color: #8b93b8; font-size: 13px; cursor: pointer; }
+  #titlebar .win-btn:hover { background: rgba(255,255,255,0.08); color: #eef1ff; }
+  #titlebar .win-btn.close:hover { background: #c0392b; color: #fff; }
+  #btnReload { -webkit-app-region: no-drag; margin-right: 10px; font-family: inherit; font-size: 11px; font-weight: 600;
+    color: #0a0b18; background: #f0b45f; border: none; border-radius: 999px; padding: 4px 12px; cursor: pointer;
+    box-shadow: 0 0 14px rgba(240,180,95,0.45); }
+  #btnReload:hover { background: #ffc978; }
+
+  #menubar { height: 28px; flex: none; display: flex; align-items: stretch; background: #0d0f20;
+    border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 12px; -webkit-app-region: no-drag; position: relative; z-index: 100; }
+  .menu { position: relative; display: flex; align-items: center; padding: 0 12px; color: #9aa1c7; cursor: pointer; }
+  .menu:hover, .menu.open { background: rgba(255,255,255,0.06); color: #eef1ff; }
+  .menu-dropdown { display: none; position: absolute; top: 28px; left: 0; min-width: 200px; background: #14162a;
+    border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 5px; box-shadow: 0 12px 32px rgba(0,0,0,0.5); }
+  .menu.open .menu-dropdown { display: block; }
+  .menu-item { padding: 7px 10px; border-radius: 4px; font-size: 12px; color: #cfd3ec; cursor: pointer; white-space: nowrap; }
+  .menu-item:hover { background: #3b5bdb; color: #fff; }
+  .menu-sep { height: 1px; background: rgba(255,255,255,0.08); margin: 4px 2px; }
+
+  /* ---- workspace: docked row + floating layer ------------------------ */
+  #workspace { position: relative; flex: 1; min-height: 0; }
+  #dockRow { position: absolute; inset: 0; display: flex; flex-direction: row; overflow: hidden; }
+  #floatingLayer { position: absolute; inset: 0; pointer-events: none; z-index: 50; }
+
+  .splitter { flex: 0 0 6px; cursor: col-resize; background: rgba(255,255,255,0.03); position: relative; }
+  .splitter:hover, .splitter.active { background: #3b5bdb; }
+
+  .panel { display: flex; flex-direction: column; min-width: 0; background: #05060f; position: relative; overflow: hidden; }
+  .panel:not(.floating) { flex: 1 1 0; border-right: none; }
+  .panel.floating { position: fixed; pointer-events: auto; border: 1px solid rgba(110,168,255,0.35);
+    border-radius: 10px; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+  .panel-titlebar { flex: none; display: flex; align-items: center; height: 30px; padding: 0 4px 0 10px;
+    background: #0d0f20; border-bottom: 1px solid rgba(255,255,255,0.07); cursor: default; user-select: none; }
+  .panel.floating .panel-titlebar { cursor: move; border-radius: 9px 9px 0 0; }
+  .panel-title { font-size: 11.5px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: #9aa1c7; flex: 1; }
+  .panel-btns { display: flex; gap: 2px; }
+  .panel-btn { background: none; border: none; color: #8b93b8; font-size: 12px; width: 24px; height: 22px; border-radius: 5px; cursor: pointer; }
+  .panel-btn:hover { background: rgba(255,255,255,0.1); color: #eef1ff; }
+  .panel-body { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+  .panel-resize { display: none; position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; }
+  .panel.floating .panel-resize { display: block; }
+  .panel-resize::after { content: ""; position: absolute; right: 3px; bottom: 3px; width: 8px; height: 8px;
+    border-right: 2px solid rgba(255,255,255,0.25); border-bottom: 2px solid rgba(255,255,255,0.25); }
+
+  /* ---- neural view ----------------------------------------------------- */
+  #neuralCanvasWrap { position: absolute; inset: 0; }
+  #neuralCanvasWrap canvas { display: block; position: absolute; inset: 0; cursor: grab; }
+  #neuralCanvasWrap canvas.dragging { cursor: grabbing; }
+  /* The HUD floats over the graph, so it's a thin strip along the top —
+     four chunky opaque cards down the left used up half the panel and hid
+     the thing they annotate. */
+  .hud { position: absolute; top: 10px; left: 10px; right: 10px; z-index: 5; display: flex; flex-direction: column; gap: 6px; }
+  .hud-bar { display: flex; align-items: center; gap: 8px; padding: 6px 11px; border-radius: 10px;
+    background: rgba(10,12,26,0.62); backdrop-filter: blur(9px); -webkit-backdrop-filter: blur(9px);
+    border: 1px solid rgba(255,255,255,0.07); }
+  .hud-bar input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: #e6e9f5; font-size: 12px; }
+  .hud-bar input::placeholder { color: #5b6289; }
+  .hud-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-family: inherit; cursor: pointer;
+    color: #6c7399; background: rgba(10,12,26,0.6); backdrop-filter: blur(9px); -webkit-backdrop-filter: blur(9px);
+    border: 1px solid rgba(255,255,255,0.06); border-radius: 999px; padding: 3px 10px; transition: color .12s, border-color .12s; }
+  .chip .dot { width: 7px; height: 7px; border-radius: 50%; opacity: .3; transition: opacity .12s; }
+  .chip.on { color: #dfe4ff; border-color: rgba(110,168,255,0.32); }
+  .chip.on .dot { opacity: 1; box-shadow: 0 0 7px currentColor; }
+  .hud-foot { position: absolute; left: 13px; bottom: 12px; z-index: 5; pointer-events: none;
+    font-size: 10.5px; color: #6c7399; line-height: 1.7; text-shadow: 0 1px 3px #05060f; }
+  .hud-card { background: rgba(10,12,26,0.62); backdrop-filter: blur(9px); -webkit-backdrop-filter: blur(9px);
+    border: 1px solid rgba(255,255,255,0.07); border-radius: 10px;
+    padding: 8px 10px; backdrop-filter: blur(6px); font-size: 11px; }
+  .hud-card .sub { font-size: 10.5px; color: #8b93b8; margin-bottom: 5px; }
+  .hud-card input[type=text] { width: 190px; background: #12142a; border: 1px solid rgba(255,255,255,0.12); color: #e6e9f5;
+    border-radius: 6px; padding: 5px 7px; font-size: 11.5px; outline: none; }
+  .legend-row { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: #c4c9e6; padding: 2px 0; cursor: pointer; user-select: none; }
+  .legend-row input { accent-color: #6ea8ff; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+  #activityLog { font-size: 10px; color: #9aa1c7; line-height: 1.55; max-height: 100px; overflow-y: auto; width: 190px; }
+  #activityLog .row { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.9; }
+  .live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #6ee7b7; margin-left: 6px;
+    box-shadow: 0 0 6px #6ee7b7; animation: pulse-dot 1.4s ease-in-out infinite; }
+  @keyframes pulse-dot { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+  #tooltip { position: fixed; pointer-events: none; z-index: 200; background: rgba(10,12,24,0.95); border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 6px; padding: 6px 9px; font-size: 12px; max-width: 320px; display: none; box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
+
+  #nodeInspector { position: fixed; top: 0; right: 0; height: 100%; width: 380px; background: rgba(9,10,20,0.97); border-left: 1px solid rgba(255,255,255,0.08);
+    transform: translateX(100%); transition: transform 0.2s ease; z-index: 300; padding: 18px; overflow-y: auto; backdrop-filter: blur(8px); }
+  #nodeInspector.open { transform: translateX(0); }
+  #nodeInspector h2 { font-size: 14px; margin: 0 0 4px; color: #eef1ff; }
+  #nodeInspector .meta { font-size: 11px; color: #8b93b8; margin-bottom: 10px; }
+  #nodeInspector .section-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: #6c7399; margin: 12px 0 4px; }
+  #nodeInspector .body { font-size: 12.5px; line-height: 1.55; color: #cfd3ec; white-space: pre-wrap; }
+  #nodeInspector .tags { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px; }
+  #nodeInspector .tag { font-size: 10.5px; background: rgba(110,168,255,0.15); border: 1px solid rgba(110,168,255,0.35); color: #a9c6ff;
+    border-radius: 10px; padding: 2px 8px; }
+  #nodeInspector .source { font-size: 11px; color: #9aa1c7; margin: 4px 0; }
+  #nodeInspector .source a { color: #7dd3fc; }
+  #nodeInspector .close { position: absolute; top: 10px; right: 12px; cursor: pointer; color: #8b93b8; font-size: 16px; background: none; border: none; }
+  #nodeInspector .edit { position: absolute; top: 10px; right: 38px; cursor: pointer; color: #8b93b8; font-size: 12px; background: none; border: none; }
+  #nodeInspector .edit:hover, #nodeInspector .close:hover { color: #eef1ff; }
+  #nodeInspector label { display: block; font-size: 11px; color: #8b93b8; margin: 10px 0 4px; }
+  #nodeInspector input.field, #nodeInspector select { width: 100%; background: #12142a; border: 1px solid rgba(255,255,255,0.12); color: #e6e9f5;
+    border-radius: 6px; padding: 6px 8px; font-size: 12.5px; outline: none; }
+  #nodeInspector textarea { width: 100%; min-height: 90px; background: #12142a; border: 1px solid rgba(255,255,255,0.12); color: #e6e9f5;
+    border-radius: 6px; padding: 8px; font-size: 12.5px; font-family: inherit; line-height: 1.5; resize: vertical; outline: none; box-sizing: border-box; }
+  #nodeInspector .actions { margin-top: 14px; display: flex; gap: 8px; }
+  #nodeInspector .btn { background: #1b1e38; border: 1px solid rgba(255,255,255,0.15); color: #e6e9f5; border-radius: 6px; padding: 6px 14px; font-size: 12px; cursor: pointer; }
+  #nodeInspector .btn:hover { border-color: rgba(255,255,255,0.3); }
+  #nodeInspector .btn.primary { background: #3b5bdb; border-color: #3b5bdb; }
+  #nodeInspector .btn.primary:hover { background: #4c6ef5; }
+  #nodeInspector .btn.danger { background: #7f1d1d; border-color: #7f1d1d; }
+  #nodeInspector .err { color: #f87171; font-size: 11.5px; margin-top: 8px; }
+
+  /* ---- chat --------------------------------------------------------- */
+  .chat-view { display: flex; flex-direction: column; height: 100%; }
+  .chat-messages { flex: 1; overflow-y: auto; padding: 14px 10%; display: flex; flex-direction: column; gap: 10px; }
+  .chat-msg { max-width: 100%; padding: 9px 13px; border-radius: 10px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+  .chat-msg.chat-user { align-self: flex-end; background: #3b5bdb; color: #fff; }
+  .chat-msg.chat-assistant { align-self: flex-start; background: #14162a; border: 1px solid rgba(255,255,255,0.08); max-width: 100%; }
+  .chat-msg.chat-tool { align-self: flex-start; background: none; color: #7c84ab; font-size: 11px; font-family: ui-monospace, monospace; padding: 2px 13px; }
+  .chat-msg.chat-system { align-self: center; color: #f87171; font-size: 11.5px; }
+  /* Make chat/output content always selectable, even inside the frameless host. */
+  .chat-messages, .chat-msg, .chat-msg * { user-select: text; -webkit-user-select: text; }
+  .chat-welcome { margin: auto 0; text-align: center; padding: 24px 8px; color: #8b93b8; }
+  .chat-welcome .mark { font-size: 38px; filter: drop-shadow(0 0 16px rgba(110,168,255,0.55)); }
+  .chat-welcome h2 { margin: 10px 0 6px; font-size: 17px; font-weight: 600; letter-spacing: .04em;
+    background: linear-gradient(92deg, #cfe0ff, #6ea8ff 55%, #b98cff);
+    -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .chat-welcome p { margin: 0 auto 16px; font-size: 12.5px; line-height: 1.65; max-width: 42ch; color: #7c84ab; }
+  .chat-welcome .hints { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+  .chat-welcome .hints span { font-size: 11.5px; color: #9aa1c7; background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07); border-radius: 999px; padding: 5px 13px; }
+  .chat-input-row { flex: none; display: flex; gap: 8px; padding: 12px 10%; border-top: 1px solid rgba(255,255,255,0.08); }
+  .chat-input-row input { flex: 1; width: auto; background: #12142a; border: 1px solid rgba(255,255,255,0.12); color: #e6e9f5;
+    border-radius: 8px; padding: 10px 12px; font-size: 13px; outline: none; }
+  .chat-input-row button { background: #3b5bdb; border: none; color: #fff; border-radius: 8px; padding: 0 18px; font-size: 13px; cursor: pointer; }
+
+  .code-block { margin: 8px 0; border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); background: #21222c; }
+  .code-block-bar { display: flex; align-items: center; gap: 8px; padding: 5px 10px; background: #191a24; font-size: 10.5px; color: #8b93b8; }
+  .code-block-bar .lang { font-family: ui-monospace, monospace; text-transform: uppercase; letter-spacing: .04em; }
+  .code-block-bar .spacer { flex: 1; }
+  .code-block-bar button { background: none; border: 1px solid rgba(255,255,255,0.15); color: #9aa1c7; border-radius: 5px;
+    font-size: 10.5px; padding: 2px 8px; cursor: pointer; }
+  .code-block-bar button:hover { color: #eef1ff; border-color: rgba(255,255,255,0.35); }
+  .code-block .CodeMirror { height: auto; max-height: 340px; font-size: 12.5px; }
+  /* Run output sits directly under the block that produced it — the result
+     and the code stay in one place. */
+  .run-output { margin: -4px 0 10px; border: 1px solid rgba(255,255,255,0.1); border-top: none;
+    border-radius: 0 0 8px 8px; background: #14162a; overflow: hidden; }
+  .run-output .run-head { padding: 5px 10px; font-size: 11px; cursor: pointer; user-select: none;
+    background: rgba(255,255,255,0.03); color: #9aa1c7; }
+  .run-output.ok .run-head { color: #6ee7b7; }
+  .run-output.bad .run-head { color: #f87171; }
+  .run-output .run-body { margin: 0; padding: 8px 10px; font-family: ui-monospace, monospace; font-size: 11.5px;
+    color: #cfd3ec; white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow: auto;
+    user-select: text; -webkit-user-select: text; }
+  .run-output .run-cmd { padding: 4px 10px 7px; font-family: ui-monospace, monospace; font-size: 10px;
+    color: #5b6289; border-top: 1px solid rgba(255,255,255,0.06); user-select: text; -webkit-user-select: text; }
+  .code-block .CodeMirror, .code-block .CodeMirror * { user-select: text; -webkit-user-select: text; }
+
+  .code-collapsed { margin: 8px 0; padding: 7px 12px; border-radius: 8px; background: #14162a; border: 1px solid rgba(255,255,255,0.08);
+    font-size: 11.5px; color: #7c84ab; cursor: pointer; font-family: ui-monospace, monospace; }
+  .code-collapsed:hover { color: #cfd3ec; border-color: rgba(255,255,255,0.2); }
+
+  /* ---- editor --------------------------------------------------------- */
+  .editor-view { display: flex; flex-direction: row; height: 100%; }
+  .file-tree { width: 220px; flex: none; overflow-y: auto; border-right: 1px solid rgba(255,255,255,0.08); padding: 8px; font-size: 12px; }
+  .file-row { padding: 4px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-row:hover { background: rgba(255,255,255,0.06); }
+  .file-row.selected { background: rgba(59,91,219,0.3); }
+  .editor-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .editor-tabs { flex: none; display: flex; overflow-x: auto; background: #0d0f20; border-bottom: 1px solid rgba(255,255,255,0.07); }
+  .editor-tab { display: flex; align-items: center; gap: 6px; padding: 6px 10px; font-size: 11.5px; color: #9aa1c7; cursor: pointer;
+    border-right: 1px solid rgba(255,255,255,0.06); white-space: nowrap; }
+  .editor-tab.active { color: #eef1ff; background: #14162a; }
+  .editor-tab .x { opacity: .6; }
+  .editor-tab .x:hover { opacity: 1; }
+  .editor-bar { flex: none; display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .editor-path { font-size: 11.5px; color: #9aa1c7; font-family: ui-monospace, monospace; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .editor-btn { background: #3b5bdb; border: none; color: #fff; border-radius: 6px; padding: 5px 14px; font-size: 12px; cursor: pointer; }
+  .editor-status { font-size: 10.5px; color: #7c84ab; }
+  .editor-cm-host { flex: 1; min-height: 0; }
+  .editor-cm-host .CodeMirror { height: 100%; font-size: 13px; }
+  /* padding + wrapping: this line used to run straight off the right edge
+     of the window in a narrow editor pane */
+  .editor-empty { display: flex; align-items: center; justify-content: center; height: 100%; color: #5b6289;
+    font-size: 12.5px; padding: 0 18px; text-align: center; }
+
+  /* ---- file explorer context menu ------------------------------------ */
+  #ctxMenu { position: fixed; z-index: 900; min-width: 194px; padding: 5px;
+    background: #14162a; border: 1px solid rgba(255,255,255,0.13); border-radius: 8px;
+    box-shadow: 0 14px 38px rgba(0,0,0,0.55); font-size: 12.5px; display: none; }
+  #ctxMenu.open { display: block; }
+  .ctx-item { padding: 6px 10px; border-radius: 5px; color: #cfd3ec; cursor: pointer;
+    display: flex; align-items: center; gap: 9px; white-space: nowrap; }
+  .ctx-item:hover { background: #3b5bdb; color: #fff; }
+  .ctx-item.danger:hover { background: #c0392b; }
+  .ctx-item.disabled { color: #4d5378; pointer-events: none; }
+  .ctx-item .k { margin-left: auto; font-size: 10.5px; opacity: .55; }
+  .ctx-sep { height: 1px; background: rgba(255,255,255,0.09); margin: 4px 3px; }
+
+  /* A real dialog: window.prompt is unreliable inside WebView2, and a
+     rename that silently does nothing is worse than no rename. */
+  #askRoot { position: fixed; inset: 0; z-index: 950; display: none;
+    align-items: center; justify-content: center; background: rgba(0,0,0,0.45); }
+  #askRoot.open { display: flex; }
+  .ask-box { width: 420px; max-width: 92vw; background: #14162a; border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.12); padding: 16px 18px; box-shadow: 0 24px 64px rgba(0,0,0,0.6); }
+  .ask-box h4 { margin: 0 0 10px; font-size: 13px; color: #eef1ff; text-transform: none;
+    letter-spacing: 0; }
+  .ask-box p { margin: 0 0 12px; font-size: 12.5px; color: #9aa1c7; line-height: 1.5; }
+  .ask-box input { width: 100%; background: #0d0f20; border: 1px solid rgba(255,255,255,0.14);
+    color: #e6e9f5; border-radius: 6px; padding: 7px 9px; font-size: 12.5px; outline: none; }
+  .ask-row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+  .ask-row button { border: none; border-radius: 6px; padding: 7px 15px; font-size: 12.5px; cursor: pointer; }
+  .ask-ok { background: #3b5bdb; color: #fff; }
+  .ask-ok.danger { background: #c0392b; }
+  .ask-cancel { background: #1b1e38; color: #e6e9f5; border: 1px solid rgba(255,255,255,0.15); }
+
+  /* ---- docking: columns + the nine drop targets ---------------------- */
+  .dock-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+  .dock-column .panel + .panel { border-top: 1px solid rgba(255,255,255,0.07); }
+  .panel-btn.panel-close:hover { background: #c0392b; color: #fff; }
+
+  #dockTargets { position: absolute; inset: 0; z-index: 400; pointer-events: none;
+    opacity: 0; transition: opacity .12s ease; }
+  #dockTargets.visible { opacity: 1; }
+  .dock-zone { position: absolute; width: 33.333%; height: 33.333%;
+    display: flex; align-items: center; justify-content: center; }
+  .dock-pip { width: 46px; height: 34px; border-radius: 6px;
+    background: rgba(16,20,42,0.85); border: 1px solid rgba(140,170,255,0.45);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.45); transition: transform .1s ease, background .1s ease; }
+  .dock-zone.hot .dock-pip { background: #3b5bdb; border-color: #9ab6ff; transform: scale(1.28); }
+  .dock-preview { position: absolute; display: none; background: rgba(59,91,219,0.18);
+    border: 2px solid #6ea8ff; border-radius: 6px; pointer-events: none; }
+
+  /* ---- modals --------------------------------------------------------- */
+  #modalRoot { position: fixed; inset: 0; z-index: 500; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.5); }
+  #modalRoot.open { display: flex; }
+  /* Settings opens *modeless*: no dimmed backdrop swallowing clicks, so the
+     editor, chat and menus stay usable while it's open — you can copy a key
+     or an endpoint out of a file and paste it in without the panel closing
+     and losing what you already typed. The root keeps covering the window
+     for layout only; pointer events go straight through it to the app. */
+  #modalRoot.modeless { background: none; pointer-events: none; }
+  #modalRoot.modeless .modal-box { pointer-events: auto; position: absolute; margin: 0; }
+  #modalRoot.modeless .modal-box h3 { cursor: move; }
+  .modal-box h3 .drag-hint { float: right; font-size: 10.5px; font-weight: 400; color: #5b6289;
+    letter-spacing: .02em; padding-top: 3px; }
+  .modal-box { width: 420px; max-width: 90vw; max-height: 80vh; overflow-y: auto; background: #14162a; border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px; padding: 18px 20px; box-shadow: 0 24px 64px rgba(0,0,0,0.6); }
+  .modal-box h3 { margin: 0 0 10px; font-size: 14px; color: #eef1ff; }
+  .modal-box .body { font-size: 12.5px; line-height: 1.6; color: #cfd3ec; }
+  .modal-box .close-row { margin-top: 16px; text-align: right; }
+  .modal-box button { background: #3b5bdb; border: none; color: #fff; border-radius: 6px; padding: 6px 16px; font-size: 12px; cursor: pointer; }
+  .modal-box code { background: #0d0f20; padding: 1px 5px; border-radius: 4px; }
+  .modal-box dt { color: #9aa1c7; margin-top: 8px; }
+  .modal-box dd { margin: 2px 0 0; }
+  .modal-box.wide { width: 560px; }
+  .modal-box h4 { font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; color: #6c7399; margin: 18px 0 8px; }
+  .provider-row { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 7px; background: #0d0f20;
+    border: 1px solid rgba(255,255,255,0.06); margin-bottom: 6px; font-size: 12px; }
+  .provider-row .name { font-weight: 600; color: #eef1ff; flex: none; }
+  /* The masked key is as long as the key itself — ~70 chars for an NVIDIA
+     one — and with nothing bounding it, it pushed Edit and Delete clean off
+     the row. It's the one element here allowed to shrink; the controls are
+     never allowed to. */
+  .provider-row .key { color: #7c84ab; font-family: ui-monospace, monospace; font-size: 11px;
+    flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .provider-row .model { color: #6ea8ff; font-size: 11px; flex: none; }
+  .provider-row .model.unset { color: #f0b45f; }
+  .provider-row .spacer { flex: 0 1 auto; }
+  .provider-row button, .provider-row .active-badge { flex: none; }
+  .provider-row .active-badge { font-size: 10px; background: rgba(110,230,180,0.15); border: 1px solid rgba(110,230,180,0.4);
+    color: #6ee7b7; border-radius: 10px; padding: 1px 8px; }
+  .provider-row button { background: #1b1e38; border: 1px solid rgba(255,255,255,0.15); color: #cfd3ec; border-radius: 5px;
+    padding: 3px 9px; font-size: 11px; cursor: pointer; }
+  .provider-row button:hover { border-color: rgba(255,255,255,0.35); }
+  .settings-form label { display: block; font-size: 11px; color: #8b93b8; margin: 8px 0 3px; }
+  .settings-form input[type=text], .settings-form input[type=password] { width: 100%; background: #0d0f20;
+    border: 1px solid rgba(255,255,255,0.12); color: #e6e9f5; border-radius: 6px; padding: 6px 8px; font-size: 12.5px; outline: none; }
+  .settings-checkbox { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #cfd3ec; margin-top: 6px; }
+  .settings-checkbox input { accent-color: #6ea8ff; }
+  .settings-err { color: #f87171; font-size: 11px; margin-top: 6px; }
+
+  /* ---- new project form ---------------------------------------------- */
+  .np-combo { position: relative; }
+  .np-list { max-height: 168px; overflow-y: auto; margin-top: 5px; border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 7px; background: #0d0f20; }
+  .np-item { display: flex; align-items: center; gap: 8px; padding: 5px 10px; font-size: 12.5px;
+    color: #cfd3ec; cursor: pointer; }
+  .np-item:hover { background: rgba(255,255,255,0.05); }
+  .np-item.selected { background: #3b5bdb; color: #fff; }
+  .np-item.unavailable .np-label { color: #6c7399; }
+  .np-item .np-warn { margin-left: auto; font-size: 10px; color: #f0b45f; }
+  .np-meta { font-size: 11.5px; color: #9aa1c7; margin-top: 7px; min-height: 1.4em; }
+  .np-console { margin-top: 5px; height: 190px; overflow-y: auto; background: #05060f;
+    border: 1px solid rgba(255,255,255,0.1); border-radius: 7px; padding: 8px 10px;
+    font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; line-height: 1.55; }
+  .np-line { white-space: pre-wrap; word-break: break-word; color: #c4c9e6; }
+  .np-line.cmd { color: #6ea8ff; }
+  .np-line.ok { color: #6ee7b7; }
+  .np-line.err { color: #f87171; }
+  .np-line.dim { color: #5b6289; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="titlebar" class="pywebview-drag-region">
+    <div class="brand"><span class="icon">🧠</span><span>DariusAI</span><span class="version" id="versionBadge"></span></div>
+    <div class="spacer"></div>
+    <button id="btnReload" title="This window is running an older build of the app" style="display:none">⟳ New build — Reload</button>
+    <button class="win-btn" id="btnMinimize" title="Minimize">─</button>
+    <button class="win-btn" id="btnMaximize" title="Maximize">▢</button>
+    <button class="win-btn close" id="btnClose" title="Close">✕</button>
+  </div>
+  <div id="menubar">
+    <div class="menu" data-menu="file">File
+      <div class="menu-dropdown">
+        <div class="menu-item" data-action="new-project">New Project…</div>
+        <div class="menu-item" data-action="open-folder">Open Project Folder…</div>
+        <div class="menu-sep"></div>
+        <div class="menu-item" data-action="exit">Exit</div>
+      </div>
+    </div>
+    <div class="menu" data-menu="edit">Edit
+      <div class="menu-dropdown">
+        <div class="menu-item" data-action="undo">Undo</div>
+        <div class="menu-item" data-action="redo">Redo</div>
+        <div class="menu-sep"></div>
+        <div class="menu-item" data-action="copy">Copy</div>
+        <div class="menu-item" data-action="cut">Cut</div>
+        <div class="menu-item" data-action="paste">Paste</div>
+        <div class="menu-item" data-action="select-all">Select All</div>
+        <div class="menu-sep"></div>
+        <div class="menu-item" data-action="find">Find…</div>
+      </div>
+    </div>
+    <div class="menu" data-menu="settings">Settings
+      <div class="menu-dropdown">
+        <div class="menu-item" data-action="show-settings">Preferences…</div>
+        <div class="menu-sep"></div>
+        <div class="menu-item" data-action="reset-layout">Reset Window Layout</div>
+      </div>
+    </div>
+    <div class="menu" data-menu="help">Help
+      <div class="menu-dropdown">
+        <div class="menu-item" data-action="show-help">Keyboard &amp; Usage…</div>
+      </div>
+    </div>
+    <div class="menu" data-menu="about">About
+      <div class="menu-dropdown">
+        <div class="menu-item" data-action="show-about">About DariusAI</div>
+      </div>
+    </div>
+  </div>
+  <div id="workspace">
+    <div id="dockRow"></div>
+    <div id="floatingLayer"></div>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+<div id="nodeInspector">
+  <button class="close" id="inspectorClose">✕</button>
+  <button class="edit" id="inspectorEdit" style="display:none">✎ Edit</button>
+  <div id="inspectorContent"></div>
+</div>
+
+<div id="ctxMenu"></div>
+<div id="askRoot"><div class="ask-box" id="askBox"></div></div>
+<div id="modalRoot"><div class="modal-box" id="modalBox"></div></div>
+
+<script src="/vendor/codemirror/codemirror.min.js"></script>
+<script src="/vendor/codemirror/mode-python.min.js"></script>
+<script src="/vendor/codemirror/mode-javascript.min.js"></script>
+<script src="/vendor/codemirror/mode-clike.min.js"></script>
+<script src="/vendor/codemirror/mode-xml.min.js"></script>
+<script src="/vendor/codemirror/mode-css.min.js"></script>
+<script src="/vendor/codemirror/mode-htmlmixed.min.js"></script>
+<script src="/vendor/codemirror/mode-shell.min.js"></script>
+<script src="/vendor/codemirror/addon-mode-simple.min.js"></script>
+<script src="/vendor/codemirror/mode-rust.min.js"></script>
+<script src="/vendor/codemirror/mode-go.min.js"></script>
+<script src="/vendor/codemirror/mode-markdown.min.js"></script>
+<script src="/vendor/codemirror/addon-matchbrackets.min.js"></script>
+<script src="/vendor/codemirror/addon-searchcursor.min.js"></script>
+<script src="/vendor/codemirror/addon-search.min.js"></script>
+<script src="/vendor/codemirror/addon-dialog.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  // Version comes from the server (/api/version -> dariusai.__version__), so
+  // the title bar badge and the About box can never claim a version the
+  // running package isn't. Filled in asynchronously; both readers tolerate
+  // the empty default in the moment before the fetch lands.
+  var APP_VERSION = { version: "", display: "" };
+  var loadedBuild = null;
+
+  function readVersion() {
+    return fetch("/api/version", { cache: "no-store" }).then(function (r) { return r.json(); });
+  }
+
+  readVersion().then(function (v) {
+    APP_VERSION = v;
+    loadedBuild = v.page_build;
+    var badge = document.getElementById("versionBadge");
+    badge.textContent = v.display;
+    badge.title = "DariusAI " + v.version;
+    badge.classList.toggle("prerelease", /alpha|beta|rc/.test(v.display));
+  }).catch(function () { /* offline/static hosting — the badge just stays empty */ });
+
+  // A window left open across an update keeps running the page it was
+  // loaded with — old JS, old CSS, none of the fixes — and looks broken in
+  // a way nothing in the UI explains. Poll the build the server would serve
+  // now, and if it has moved on, say so instead of leaving it to be
+  // guessed at.
+  setInterval(function () {
+    if (document.hidden || loadedBuild === null) return;
+    readVersion().then(function (v) {
+      if (v.page_build && v.page_build !== loadedBuild) {
+        document.getElementById("btnReload").style.display = "";
+      }
+    }).catch(function () { /* server restarting — try again next tick */ });
+  }, 5000);
+
+  var EXT_MODE = {
+    py: "python", js: "javascript", mjs: "javascript", ts: "javascript", jsx: "javascript", tsx: "javascript",
+    c: "text/x-csrc", h: "text/x-csrc", cpp: "text/x-c++src", hpp: "text/x-c++src", cc: "text/x-c++src",
+    cs: "text/x-csharp", java: "text/x-java",
+    html: "htmlmixed", htm: "htmlmixed", xml: "xml",
+    css: "css", md: "markdown", markdown: "markdown",
+    sh: "shell", bash: "shell", ps1: "shell",
+    rs: "rust", go: "go",
+    json: "javascript", yml: "javascript", yaml: "javascript",
+  };
+  function modeForFilename(name) {
+    var ext = (name.split(".").pop() || "").toLowerCase();
+    return EXT_MODE[ext] || null;
+  }
+  var LANG_MODE = {
+    python: "python", py: "python", javascript: "javascript", js: "javascript", ts: "javascript", typescript: "javascript",
+    c: "text/x-csrc", cpp: "text/x-c++src", "c++": "text/x-c++src", csharp: "text/x-csharp", "c#": "text/x-csharp",
+    java: "text/x-java", html: "htmlmixed", xml: "xml", css: "css", markdown: "markdown", md: "markdown",
+    sh: "shell", bash: "shell", shell: "shell", rust: "rust", rs: "rust", go: "go", golang: "go", json: "javascript",
+  };
+  function modeForLang(lang) { return LANG_MODE[(lang || "").toLowerCase()] || null; }
+
+  // =====================================================================
+  // Window Manager — dockable/floating panels with persisted layout
+  // =====================================================================
+  var WM = (function () {
+    var STORAGE_KEY = "dariusai.layout.v2";
+    // Three columns, each holding a stack of panels. A slot is "<column>:<row>"
+    // where column is left|centre|right and row is top|middle|bottom — the
+    // nine drop targets. DOCK_ORDER survives only as the default arrangement
+    // and as the reset target; live placement comes from each panel's slot.
+    var DOCK_ORDER = ["neural", "chat", "editor"];
+    var COLUMNS = ["left", "centre", "right"];
+    var ROWS = ["top", "middle", "bottom"];
+    var DEFAULT_SLOTS = { neural: "left:middle", chat: "centre:middle", editor: "right:middle" };
+
+    function slotOf(panel) {
+      return panel.slot || DEFAULT_SLOTS[panel.id] || "centre:middle";
+    }
+
+    function closePanel(panel) {
+      // A popout is disposable; a core panel is not — closing one docks it
+      // back rather than destroying a view the user can't recreate.
+      if (panel.closable) {
+        if (panel.el.parentNode) panel.el.parentNode.removeChild(panel.el);
+        delete panels[panel.id];
+      } else if (panel.mode === "floating") {
+        setMode(panel, "docked");
+      } else {
+        panel.el.classList.add("collapsed-away");
+        panel.hidden = true;
+        rebuildDockRow();
+      }
+      saveState();
+      window.dispatchEvent(new Event("resize"));
+    }
+    var panels = {};
+    var zCounter = 100;
+
+    function loadState() {
+      try {
+        var raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : {};
+      } catch (e) { return {}; }
+    }
+    function saveState() {
+      var state = {};
+      DOCK_ORDER.forEach(function (id) {
+        var p = panels[id];
+        if (!p) return;
+        state[id] = { mode: p.mode, x: p.x, y: p.y, w: p.w, h: p.h,
+                      dockWidth: p.dockWidth, slot: p.slot, hidden: !!p.hidden };
+      });
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+    }
+
+    function bringToFront(panel) { zCounter++; panel.el.style.zIndex = zCounter; }
+
+    function applyFloatingRect(panel) {
+      panel.el.style.left = panel.x + "px";
+      panel.el.style.top = panel.y + "px";
+      panel.el.style.width = panel.w + "px";
+      panel.el.style.height = panel.h + "px";
+    }
+
+    function rebuildDockRow() {
+      var row = document.getElementById("dockRow");
+      row.innerHTML = "";
+
+      // Bucket every docked panel by column, ordered top -> middle -> bottom
+      // within each. An empty column takes no space, so docking three panels
+      // into one column gives a single stacked column, exactly as VS does.
+      var byColumn = { left: [], centre: [], right: [] };
+      Object.keys(panels).forEach(function (id) {
+        var p = panels[id];
+        if (!p || p.mode !== "docked" || p.hidden) return;
+        var parts = slotOf(p).split(":");
+        var col = byColumn[parts[0]] ? parts[0] : "centre";
+        byColumn[col].push({ panel: p, row: ROWS.indexOf(parts[1]) < 0 ? 1 : ROWS.indexOf(parts[1]) });
+      });
+
+      var lastColumnPanel = null;
+      COLUMNS.forEach(function (col) {
+        var members = byColumn[col];
+        if (!members.length) return;
+        members.sort(function (a, b) { return a.row - b.row; });
+
+        if (lastColumnPanel) {
+          var sp = document.createElement("div");
+          sp.className = "splitter";
+          sp.dataset.left = lastColumnPanel.id;
+          attachSplitter(sp, lastColumnPanel);
+          row.appendChild(sp);
+        }
+
+        var wrap = document.createElement("div");
+        wrap.className = "dock-column";
+        wrap.style.flex = members[0].panel.dockWidth
+          ? ("0 0 " + members[0].panel.dockWidth + "px") : "1 1 0";
+        members.forEach(function (m) {
+          m.panel.el.style.flex = "1 1 0";
+          wrap.appendChild(m.panel.el);
+        });
+        row.appendChild(wrap);
+        lastColumnPanel = members[0].panel;
+      });
+    }
+
+    function attachSplitter(sp, leftPanel) {
+      var dragging = false, startX = 0, startW = 0;
+      sp.addEventListener("mousedown", function (ev) {
+        dragging = true; startX = ev.clientX; startW = leftPanel.el.getBoundingClientRect().width;
+        sp.classList.add("active");
+        ev.preventDefault();
+      });
+      window.addEventListener("mousemove", function (ev) {
+        if (!dragging) return;
+        var w = Math.max(220, Math.min(window.innerWidth - 300, startW + (ev.clientX - startX)));
+        leftPanel.dockWidth = w;
+        leftPanel.el.style.flex = "0 0 " + w + "px";
+        window.dispatchEvent(new Event("resize"));
+      });
+      window.addEventListener("mouseup", function () {
+        if (dragging) { dragging = false; sp.classList.remove("active"); saveState(); }
+      });
+    }
+
+    // ---- dock targets ---------------------------------------------------
+    // Nine zones over the workspace: three columns x three rows. They appear
+    // only while a floating panel is being dragged, the nearest one lights
+    // up, and a preview shows where the panel would land.
+    var dockOverlay = null, activeZone = null;
+
+    function showDockTargets() {
+      if (dockOverlay) return;
+      dockOverlay = document.createElement("div");
+      dockOverlay.id = "dockTargets";
+      COLUMNS.forEach(function (col, ci) {
+        ROWS.forEach(function (rowName, ri) {
+          var zone = document.createElement("div");
+          zone.className = "dock-zone";
+          zone.dataset.slot = col + ":" + rowName;
+          zone.style.left = (ci * 33.333) + "%";
+          zone.style.top = (ri * 33.333) + "%";
+          zone.innerHTML = "<span class='dock-pip'></span>";
+          dockOverlay.appendChild(zone);
+        });
+      });
+      var preview = document.createElement("div");
+      preview.className = "dock-preview";
+      preview.id = "dockPreview";
+      dockOverlay.appendChild(preview);
+      document.getElementById("workspace").appendChild(dockOverlay);
+      requestAnimationFrame(function () { dockOverlay.classList.add("visible"); });
+    }
+
+    function updateDockTarget(clientX, clientY) {
+      if (!dockOverlay) return;
+      var ws = document.getElementById("workspace").getBoundingClientRect();
+      var inside = clientX >= ws.left && clientX <= ws.right && clientY >= ws.top && clientY <= ws.bottom;
+      activeZone = null;
+      var preview = document.getElementById("dockPreview");
+
+      Array.prototype.forEach.call(dockOverlay.querySelectorAll(".dock-zone"), function (zone) {
+        var r = zone.getBoundingClientRect();
+        var hit = inside && clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
+        zone.classList.toggle("hot", hit);
+        if (hit) activeZone = zone.dataset.slot;
+      });
+
+      if (activeZone && preview) {
+        var parts = activeZone.split(":");
+        preview.style.display = "block";
+        preview.style.left = (COLUMNS.indexOf(parts[0]) * 33.333) + "%";
+        preview.style.width = "33.333%";
+        preview.style.top = "0";
+        preview.style.height = "100%";
+      } else if (preview) {
+        preview.style.display = "none";
+      }
+    }
+
+    function hideDockTargets() {
+      if (!dockOverlay) return;
+      dockOverlay.parentNode.removeChild(dockOverlay);
+      dockOverlay = null;
+    }
+
+    function setMode(panel, mode) {
+      if (panel.mode === mode) return;
+      if (mode === "floating") {
+        var rect = panel.el.getBoundingClientRect();
+        panel.x = panel.x != null ? panel.x : rect.left + 20;
+        panel.y = panel.y != null ? panel.y : rect.top + 20;
+        panel.w = panel.w || Math.max(420, rect.width * 0.8);
+        panel.h = panel.h || Math.max(320, rect.height * 0.8);
+        panel.mode = "floating";
+        panel.el.classList.add("floating");
+        applyFloatingRect(panel);
+        document.getElementById("floatingLayer").appendChild(panel.el);
+        bringToFront(panel);
+        panel.toggleBtn.textContent = "⧉";
+        panel.toggleBtn.title = "Dock";
+      } else {
+        panel.mode = "docked";
+        panel.el.classList.remove("floating");
+        panel.el.style.left = panel.el.style.top = panel.el.style.width = panel.el.style.height = panel.el.style.zIndex = "";
+        rebuildDockRow();
+        panel.toggleBtn.textContent = "⤢";
+        panel.toggleBtn.title = "Float";
+      }
+      saveState();
+      window.dispatchEvent(new Event("resize"));
+    }
+
+    function createPanel(id, title, contentEl) {
+      var el = document.createElement("div");
+      el.className = "panel";
+      el.dataset.id = id;
+
+      var bar = document.createElement("div");
+      bar.className = "panel-titlebar";
+      var titleSpan = document.createElement("span");
+      titleSpan.className = "panel-title";
+      titleSpan.textContent = title;
+      var btns = document.createElement("span");
+      btns.className = "panel-btns";
+      var toggleBtn = document.createElement("button");
+      toggleBtn.className = "panel-btn";
+      toggleBtn.textContent = "⤢";
+      toggleBtn.title = "Float";
+      // Every panel gets a close button. Popped-out code blocks had none at
+      // all, and their dock button made them vanish — alive in `panels`,
+      // absent from the DOM, unrecoverable.
+      var closeBtn = document.createElement("button");
+      closeBtn.className = "panel-btn panel-close";
+      closeBtn.textContent = "✕";
+      closeBtn.title = "Close";
+      btns.appendChild(toggleBtn);
+      btns.appendChild(closeBtn);
+      bar.appendChild(titleSpan);
+      bar.appendChild(btns);
+
+      var body = document.createElement("div");
+      body.className = "panel-body";
+      body.appendChild(contentEl);
+
+      var resizeHandle = document.createElement("div");
+      resizeHandle.className = "panel-resize";
+
+      el.appendChild(bar);
+      el.appendChild(body);
+      el.appendChild(resizeHandle);
+
+      // `slot` is where this panel docks: which column, and where in it.
+      // Previously docking position came from a fixed DOCK_ORDER array, so a
+      // panel always snapped back to the slot it was born in and a popout —
+      // absent from that array — snapped back to nowhere at all.
+      var panel = { id: id, el: el, toggleBtn: toggleBtn, closeBtn: closeBtn, mode: "docked",
+                    x: null, y: null, w: null, h: null, dockWidth: null,
+                    slot: null, closable: false };
+      panels[id] = panel;
+
+      closeBtn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        closePanel(panel);
+      });
+
+      var dragging = false, dragFrom = [0, 0], startXY = [0, 0];
+      bar.addEventListener("mousedown", function (ev) {
+        if (panel.mode !== "floating" || ev.target === toggleBtn || ev.target === closeBtn) return;
+        dragging = true; dragFrom = [ev.clientX, ev.clientY]; startXY = [panel.x, panel.y];
+        bringToFront(panel);
+        showDockTargets();          // VS-style: targets appear as you pick it up
+        ev.preventDefault();
+      });
+      var resizing = false, resizeFrom = [0, 0], resizeStartWH = [0, 0];
+      resizeHandle.addEventListener("mousedown", function (ev) {
+        if (panel.mode !== "floating") return;
+        resizing = true; resizeFrom = [ev.clientX, ev.clientY]; resizeStartWH = [panel.w, panel.h];
+        bringToFront(panel);
+        ev.preventDefault(); ev.stopPropagation();
+      });
+      window.addEventListener("mousemove", function (ev) {
+        if (dragging) {
+          panel.x = startXY[0] + (ev.clientX - dragFrom[0]);
+          panel.y = startXY[1] + (ev.clientY - dragFrom[1]);
+          applyFloatingRect(panel);
+          updateDockTarget(ev.clientX, ev.clientY);   // light the nearest zone
+        } else if (resizing) {
+          panel.w = Math.max(320, resizeStartWH[0] + (ev.clientX - resizeFrom[0]));
+          panel.h = Math.max(220, resizeStartWH[1] + (ev.clientY - resizeFrom[1]));
+          applyFloatingRect(panel);
+          window.dispatchEvent(new Event("resize"));
+        }
+      });
+      window.addEventListener("mouseup", function () {
+        if (dragging) {
+          // Dropped on a zone: dock it there. This is the whole point —
+          // where it lands is where you dropped it, not where it was born.
+          if (activeZone) {
+            panel.slot = activeZone;
+            setMode(panel, "docked");
+          }
+          hideDockTargets();
+          activeZone = null;
+        }
+        if (dragging || resizing) { saveState(); window.dispatchEvent(new Event("resize")); }
+        dragging = false; resizing = false;
+      });
+      el.addEventListener("mousedown", function () { if (panel.mode === "floating") bringToFront(panel); });
+      toggleBtn.addEventListener("click", function () { setMode(panel, panel.mode === "docked" ? "floating" : "docked"); });
+
+      return panel;
+    }
+
+    function createFloatingOnly(id, title, contentEl, rect) {
+      var panel = createPanel(id, title, contentEl);
+      panel.closable = true;   // a popped-out code block can be thrown away
+      panel.x = rect.x; panel.y = rect.y; panel.w = rect.w; panel.h = rect.h;
+      panel.mode = "docked"; // force setMode to actually transition
+      setMode(panel, "floating");
+      return panel;
+    }
+
+    function applyLayout(state) {
+      DOCK_ORDER.forEach(function (id) {
+        var p = panels[id];
+        var saved = state[id];
+        if (!p || !saved) return;
+        p.dockWidth = saved.dockWidth || null;
+        // Layouts saved before slots existed simply have none — they fall
+        // back to the default arrangement rather than breaking on load.
+        p.slot = saved.slot || null;
+        p.hidden = !!saved.hidden;
+        if (saved.mode === "floating") {
+          p.x = saved.x; p.y = saved.y; p.w = saved.w; p.h = saved.h;
+          p.mode = "docked";
+          setMode(p, "floating");
+        }
+      });
+      rebuildDockRow();
+    }
+
+    function resetLayout() {
+      try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+      // Close stray popouts, then put the three core panels back where they
+      // belong. This is the escape hatch if a layout ends up unusable.
+      Object.keys(panels).forEach(function (id) {
+        var p = panels[id];
+        if (p && p.closable) closePanel(p);
+      });
+      DOCK_ORDER.forEach(function (id) {
+        var p = panels[id];
+        if (!p) return;
+        if (p.mode === "floating") setMode(p, "docked");
+        p.dockWidth = null;
+        p.slot = DEFAULT_SLOTS[id] || null;
+        p.hidden = false;
+        p.el.classList.remove("collapsed-away");
+      });
+      rebuildDockRow();
+      window.dispatchEvent(new Event("resize"));
+    }
+
+    function init() {
+      rebuildDockRow();
+      applyLayout(loadState());
+    }
+
+    return { createPanel: createPanel, createFloatingOnly: createFloatingOnly, init: init, resetLayout: resetLayout, saveState: saveState, panels: panels };
+  })();
+
+  // =====================================================================
+  // Neural View — 3D orbit-camera galaxy of the brain graph. Central Brain
+  // node renders as a glowing pulsing core; edges "electrify" (jagged,
+  // flickering, bright) while a pulse is actively traveling them; any node
+  // touched by real activity keeps a sustained glow, not just a one-shot
+  // flash, so "in use" reads visually, not just for an instant.
+  // =====================================================================
+  var COORDINATOR_ID = "brain-coordinator";
+
+  function buildNeuralView(container) {
+    var canvas = document.createElement("canvas");
+    container.appendChild(canvas);
+    var ctx = canvas.getContext("2d");
+    var W = 0, H = 0, DPR = Math.max(1, window.devicePixelRatio || 1);
+
+    var hud = document.createElement("div");
+    hud.className = "hud";
+    hud.innerHTML =
+      "<div class='hud-bar'><span class='live-dot' id='nvLiveDot' title='live'></span>" +
+      "<input type='text' id='nvSearch' placeholder='search nodes / tags…'></div>" +
+      "<div class='hud-chips' id='nvLegend'></div>";
+    container.appendChild(hud);
+
+    // Stats and the activity feed sit in the corner as bare text rather than
+    // in cards — in a panel this narrow, four stacked cards down the left
+    // covered the graph they were describing.
+    var hudFoot = document.createElement("div");
+    hudFoot.className = "hud-foot";
+    hudFoot.innerHTML = "<div id='nvActivityLog'></div><div id='nvStats'></div>";
+    container.appendChild(hudFoot);
+
+    function resize() {
+      var r = container.getBoundingClientRect();
+      W = Math.max(1, r.width); H = Math.max(1, r.height);
+      canvas.width = W * DPR; canvas.height = H * DPR;
+      canvas.style.width = W + "px"; canvas.style.height = H + "px";
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    }
+    if (window.ResizeObserver) { new ResizeObserver(resize).observe(container); }
+    window.addEventListener("resize", resize);
+    resize();
+
+    // ---- 3D orbit camera ---------------------------------------------
+    var FOCAL = 640, NEAR = 30;
+    var cam = { yaw: 0.5, pitch: 0.3, dist: 900, tx: 0, ty: 0, tz: 0 };
+
+    function rotate(x, y, z) {
+      var cosY = Math.cos(cam.yaw), sinY = Math.sin(cam.yaw);
+      var x1 = x * cosY - z * sinY, z1 = x * sinY + z * cosY, y1 = y;
+      var cosP = Math.cos(cam.pitch), sinP = Math.sin(cam.pitch);
+      var y2 = y1 * cosP - z1 * sinP, z2 = y1 * sinP + z1 * cosP;
+      return [x1, y2, z2];
+    }
+    function invRotate(x, y, z) {
+      var cosP = Math.cos(-cam.pitch), sinP = Math.sin(-cam.pitch);
+      var y1 = y * cosP - z * sinP, z1 = y * sinP + z * cosP, x1 = x;
+      var cosY = Math.cos(-cam.yaw), sinY = Math.sin(-cam.yaw);
+      var x2 = x1 * cosY - z1 * sinY, z2 = x1 * sinY + z1 * cosY;
+      return [x2, y1, z2];
+    }
+    // The HUD occupies a fixed strip down the left, so the graph's optical
+    // centre is the middle of what's left over, not the middle of the
+    // canvas — otherwise the brain sits behind the search box. Picking uses
+    // this same projection, so the two can't disagree.
+    // Nudged down a little to clear the HUD strip along the top, so the
+    // graph's optical centre is the middle of the space actually free.
+    var HUD_STRIP_H = 64;
+
+    function project(x, y, z) {
+      var r = rotate(x - cam.tx, y - cam.ty, z - cam.tz);
+      var depth = r[2] + cam.dist;
+      if (depth < NEAR) return null;
+      var f = FOCAL / depth;
+      return { sx: W / 2 + r[0] * f, sy: (H + HUD_STRIP_H) / 2 + r[1] * f, scale: f, depth: depth };
+    }
+
+    // ---- the central brain: real 3D geometry ----------------------------
+    // Built as a mesh rather than drawn as a sprite, because the camera
+    // orbits: a billboard always faces you and would slide about looking
+    // flat the moment you dragged. These vertices go through the same
+    // rotate()/project() the graph already uses, so turning the view shows
+    // a genuinely different profile — the back of the head from behind —
+    // and pan/zoom keep working with no extra code.
+    //
+    // Generated procedurally: a displaced ellipsoid with a longitudinal
+    // fissure and gyri ridges, plus a cerebellum lobe. No model file to
+    // source, license, load or keep in sync, and no 3D library — the
+    // renderer this project already has is enough.
+    var BRAIN_RADIUS = 78;   // world units — the spec says the brain is always the largest thing
+
+    function buildBrainMesh(lonSteps, latSteps) {
+        var verts = [], faces = [];
+        for (var i = 0; i <= latSteps; i++) {
+          var v = i / latSteps, phi = v * Math.PI;              // 0..PI, pole to pole
+          for (var j = 0; j <= lonSteps; j++) {
+            var u = j / lonSteps, theta = u * Math.PI * 2;
+            var sp = Math.sin(phi), cp = Math.cos(phi);
+            var st = Math.sin(theta), ct = Math.cos(theta);
+
+            // gyri: layered sines give convoluted ridges without noise tables
+            var gyri = 0.055 * Math.sin(9 * theta + 2.5 * phi)
+                     + 0.040 * Math.sin(13 * phi + 1.7)
+                     + 0.028 * Math.sin(17 * theta - 3.1 * phi)
+                     + 0.020 * Math.sin(23 * phi + 5 * theta);
+            var rad = 1 + gyri;
+
+            var x = sp * ct, y = cp, z = sp * st;
+
+            // Longitudinal fissure: a deep groove down the midline, cut from
+            // the top and fading before the underside. This is the single
+            // strongest "that's a brain" cue from any viewing angle above.
+            var fissure = Math.exp(-Math.pow(x * 6.5, 2)) * Math.max(0, y) * 0.30;
+            rad -= fissure;
+
+            // Temporal lobes: swell the lower flanks outward and forward, so
+            // the silhouette gains the lobe that hangs beside the ear.
+            var temporal = Math.exp(-Math.pow((y + 0.35) * 2.6, 2))
+                         * Math.exp(-Math.pow(z * 1.1, 2)) * Math.abs(x);
+            rad += 0.17 * temporal;
+
+            // Frontal pole rounds off; occipital (back) tapers and lifts —
+            // a brain is an egg lying on its side, not a ball.
+            rad *= 1 - 0.10 * Math.max(0, -z) * Math.max(0, y);
+            rad *= 1 + 0.06 * Math.max(0, z);
+
+            // Underside flattens where it would sit on the brain stem.
+            if (y < -0.55) rad *= 1 - 0.22 * (Math.abs(y) - 0.55);
+
+            // Proportions: long front-to-back, narrower across, flatter still
+            // in height — measured off the real thing rather than guessed.
+            verts.push([x * rad * 0.80, y * rad * 0.74, z * rad * 1.06]);
+          }
+        }
+        var stride = lonSteps + 1;
+        for (var a = 0; a < latSteps; a++) {
+          for (var b = 0; b < lonSteps; b++) {
+            var i0 = a * stride + b;
+            faces.push([i0, i0 + 1, i0 + stride + 1, i0 + stride]);
+          }
+        }
+
+        // cerebellum: a smaller squashed lobe tucked under the back
+        var base = verts.length;
+        var cl = 10, cn = 16;
+        for (var ci = 0; ci <= cl; ci++) {
+          var cv = ci / cl, cphi = cv * Math.PI;
+          for (var cj = 0; cj <= cn; cj++) {
+            var cu = cj / cn, cth = cu * Math.PI * 2;
+            var csp = Math.sin(cphi), ccp = Math.cos(cphi);
+            var ridge = 0.055 * Math.sin(22 * cphi) + 0.02 * Math.sin(9 * cth);
+            var cr = 0.40 + ridge;
+            // wider than tall, tucked under and behind the occipital pole
+            verts.push([
+              csp * Math.cos(cth) * cr * 0.92,
+              ccp * cr * 0.48 - 0.46,
+              csp * Math.sin(cth) * cr * 0.78 + 0.62,
+            ]);
+          }
+        }
+        var cstride = cn + 1;
+        for (var ca = 0; ca < cl; ca++) {
+          for (var cb = 0; cb < cn; cb++) {
+            var k0 = base + ca * cstride + cb;
+            faces.push([k0, k0 + 1, k0 + cstride + 1, k0 + cstride]);
+          }
+        }
+        return { verts: verts, faces: faces };
+      }
+
+    var BRAIN = buildBrainMesh(44, 30);  // ~1300 quads; 60fps measured
+
+    function drawBrain(centre, now, energy) {
+      // Project every vertex through the shared camera, then paint faces
+      // back-to-front. Painter's algorithm is enough here: the mesh is
+      // convex-ish and closed, so there is nothing to interpenetrate.
+      // Two passes per vertex: the rotated position (camera space, which is
+      // where lighting has to happen) and the projected point. Shading off
+      // screen area — my first attempt — has no idea which way a face
+      // points, so the whole thing rendered as a flat disc.
+      var pts = new Array(BRAIN.verts.length);
+      var cam3 = new Array(BRAIN.verts.length);
+      for (var i = 0; i < BRAIN.verts.length; i++) {
+        var v = BRAIN.verts[i];
+        var wx = centre.x + v[0] * BRAIN_RADIUS,
+            wy = centre.y + v[1] * BRAIN_RADIUS,
+            wz = centre.z + v[2] * BRAIN_RADIUS;
+        cam3[i] = rotate(wx - cam.tx, wy - cam.ty, wz - cam.tz);
+        pts[i] = project(wx, wy, wz);
+      }
+
+      var LX = -0.45, LY = -0.78, LZ = -0.44;           // key light, upper-left, toward viewer
+      var drawable = [];
+      for (var f = 0; f < BRAIN.faces.length; f++) {
+        var face = BRAIN.faces[f];
+        var a = pts[face[0]], b = pts[face[1]], c = pts[face[2]], d = pts[face[3]];
+        if (!a || !b || !c || !d) continue;
+        if ((b.sx - a.sx) * (c.sy - a.sy) - (b.sy - a.sy) * (c.sx - a.sx) <= 0) continue;  // back face
+
+        var A = cam3[face[0]], B = cam3[face[1]], C = cam3[face[2]];
+        var ux = B[0] - A[0], uy = B[1] - A[1], uz = B[2] - A[2];
+        var vx = C[0] - A[0], vy = C[1] - A[1], vz = C[2] - A[2];
+        var nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+        var len = Math.hypot(nx, ny, nz) || 1;
+        nx /= len; ny /= len; nz /= len;
+
+        var lambert = Math.max(0, nx * LX + ny * LY + nz * LZ);
+        var rim = Math.pow(1 - Math.abs(nz), 2.2);       // glow at the silhouette
+        drawable.push({
+          a: a, b: b, c: c, d: d,
+          depth: (a.depth + b.depth + c.depth + d.depth) / 4,
+          lambert: lambert, rim: rim,
+        });
+      }
+      drawable.sort(function (p, q) { return q.depth - p.depth; });
+
+      for (var k = 0; k < drawable.length; k++) {
+        var t = drawable[k];
+        // Pink-grey: cool grey in shadow warming to rose in the light, with
+        // a violet rim so it separates from the dark background.
+        var shade = 0.20 + 0.80 * t.lambert;
+        var rr = Math.round(60 + 175 * shade + 42 * t.rim);
+        var gg = Math.round(48 + 118 * shade + 24 * t.rim);
+        var bb = Math.round(60 + 126 * shade + 66 * t.rim);
+        // energy tints the whole organ toward electric blue as it works
+        if (energy > 0) {
+          rr = Math.round(rr * (1 - 0.18 * energy));
+          gg = Math.round(gg * (1 - 0.05 * energy) + 14 * energy);
+          bb = Math.round(bb * (1 - 0.02 * energy) + 46 * energy);
+        }
+        ctx.fillStyle = "rgb(" + rr + "," + gg + "," + bb + ")";
+        ctx.beginPath();
+        ctx.moveTo(t.a.sx, t.a.sy); ctx.lineTo(t.b.sx, t.b.sy);
+        ctx.lineTo(t.c.sx, t.c.sy); ctx.lineTo(t.d.sx, t.d.sy);
+        ctx.closePath();
+        ctx.fill();
+        // Deep sulci only where the surface turns away — drawing every edge
+        // turned the whole organ to mud at small sizes.
+        if (t.lambert < 0.30) {
+          ctx.strokeStyle = "rgba(38,22,32,0.5)";
+          ctx.lineWidth = 0.6;
+          ctx.stroke();
+        }
+      }
+
+      // Electricity across the surface, following the mesh as it turns.
+      // `energy` is 0 when idle and 1 while the agent is working, so this
+      // reports real activity instead of decorating.
+      if (energy > 0.01) {
+        var arcs = Math.round(2 + energy * 6);
+        ctx.lineCap = "round";
+        for (var s = 0; s < arcs; s++) {
+          var seed = Math.floor(now / 90) * 31 + s * 977;
+          var i1 = (seed * 1103515245 + 12345) >>> 0;
+          var i2 = (i1 * 1103515245 + 12345) >>> 0;
+          var p1 = pts[i1 % pts.length], p2 = pts[i2 % pts.length];
+          if (!p1 || !p2) continue;
+          if (Math.hypot(p2.sx - p1.sx, p2.sy - p1.sy) > 130) continue;  // keep arcs local
+          ctx.globalAlpha = 0.55 + 0.45 * Math.sin(now / 70 + s);
+          ctx.strokeStyle = s % 3 === 0 ? "#eaf4ff" : "#7dd3fc";
+          ctx.lineWidth = 1.3;
+          ctx.shadowBlur = 10; ctx.shadowColor = "#7dd3fc";
+          drawElectricSegment(p1, p2, ctx.strokeStyle, 1.3, 4);
+          ctx.shadowBlur = 0;
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // ---- starfield ------------------------------------------------------
+    var stars = [];
+    for (var si = 0; si < 900; si++) {
+      var sa = Math.random() * Math.PI * 2, sb = Math.acos(Math.random() * 2 - 1);
+      var sr = 2400 + Math.random() * 2000;
+      stars.push({ x: sr * Math.sin(sb) * Math.cos(sa), y: sr * Math.sin(sb) * Math.sin(sa), z: sr * Math.cos(sb),
+        r: Math.random() * 1.2 + 0.3, a: Math.random() * 0.6 + 0.2 });
+    }
+
+    var COLORS = {
+      brain: "#eaf2ff", skill: "#6ee7b7", tool: "#4fd1ff", language: "#38bdf8",
+      framework: "#38bdf8", pattern: "#fbbf24", project: "#fb7185", preference: "#f0abfc",
+      conversation: "#f97316",
+    };
+    function hashHue(s) {
+      var h = 0;
+      for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+      return h % 360;
+    }
+    function nodeColor(n) {
+      if (n.id === COORDINATOR_ID) return COLORS.brain;
+      return COLORS[n.category] || ("hsl(" + hashHue(n.category || "other") + ",70%,60%)");
+    }
+    function nodeRadius(n) {
+      if (n.id === COORDINATOR_ID) return 22;
+      return Math.min(15, 4.5 + Math.sqrt(n.usage_count || 0) * 1.8 + Math.sqrt(n.source_count || 0));
+    }
+
+    var nodes = [], edges = [], byId = new Map();
+    var filters = {};
+    var searchTerm = "";
+    function categoryOf(n) { return n.id === COORDINATOR_ID ? "brain" : (n.category || "skill"); }
+    function visible(n) { return filters[categoryOf(n)] !== false; }
+    function matches(n) {
+      if (!searchTerm) return true;
+      var hay = (n.label + " " + (n.tags || []).join(" ")).toLowerCase();
+      return hay.indexOf(searchTerm) >= 0;
+    }
+
+    // ---- physics (3D) ---------------------------------------------------
+    var alpha = 1, ALPHA_DECAY = 0.985, ALPHA_MIN = 0.006;
+
+    function initPositions() {
+      var n = nodes.length, R = Math.max(240, Math.sqrt(n) * 65);
+      for (var i = 0; i < n; i++) {
+        var a = Math.random() * Math.PI * 2, b = Math.acos(Math.random() * 2 - 1), r = Math.random() * R;
+        nodes[i].x = r * Math.sin(b) * Math.cos(a);
+        nodes[i].y = r * Math.sin(b) * Math.sin(a);
+        nodes[i].z = r * Math.cos(b);
+        nodes[i].vx = 0; nodes[i].vy = 0; nodes[i].vz = 0; nodes[i].fx = null; nodes[i].fy = null; nodes[i].fz = null;
+      }
+      var hub = byId.get(COORDINATOR_ID);
+      if (hub) { hub.x = 0; hub.y = 0; hub.z = 0; hub.fx = 0; hub.fy = 0; hub.fz = 0; }
+    }
+
+    function tick() {
+      if (alpha < ALPHA_MIN) return;
+      var REPULSE = 1500;
+      for (var i = 0; i < nodes.length; i++) {
+        var n = nodes[i];
+        if (n.fx != null) continue;
+        var fx = 0, fy = 0, fz = 0;
+        for (var j = 0; j < nodes.length; j++) {
+          if (i === j) continue;
+          var o = nodes[j];
+          var dx = n.x - o.x, dy = n.y - o.y, dz = n.z - o.z;
+          var d2 = dx * dx + dy * dy + dz * dz + 0.01;
+          if (d2 > 200000) continue;
+          var d = Math.sqrt(d2);
+          var f = REPULSE / d2;
+          fx += (dx / d) * f; fy += (dy / d) * f; fz += (dz / d) * f;
+        }
+        fx += -n.x * 0.0018; fy += -n.y * 0.0018; fz += -n.z * 0.0018;
+        n.vx = (n.vx + fx * alpha) * 0.86;
+        n.vy = (n.vy + fy * alpha) * 0.86;
+        n.vz = (n.vz + fz * alpha) * 0.86;
+      }
+      for (var k = 0; k < edges.length; k++) {
+        var e = edges[k];
+        var a = byId.get(e.source), b = byId.get(e.target);
+        if (!a || !b) continue;
+        var target = e.kind === "index" ? 170 : 95;
+        var strength = e.kind === "index" ? 0.035 : 0.05;
+        var dx2 = b.x - a.x, dy2 = b.y - a.y, dz2 = b.z - a.z;
+        var d3 = Math.sqrt(dx2 * dx2 + dy2 * dy2 + dz2 * dz2) || 1;
+        var diff = (d3 - target) * strength * alpha;
+        var ux = dx2 / d3, uy = dy2 / d3, uz = dz2 / d3;
+        if (a.fx == null) { a.vx += ux * diff; a.vy += uy * diff; a.vz += uz * diff; }
+        if (b.fx == null) { b.vx -= ux * diff; b.vy -= uy * diff; b.vz -= uz * diff; }
+      }
+      for (var m = 0; m < nodes.length; m++) {
+        var nd = nodes[m];
+        if (nd.fx != null) { nd.x = nd.fx; nd.y = nd.fy; nd.z = nd.fz; continue; }
+        nd.x += nd.vx; nd.y += nd.vy; nd.z += nd.vz;
+      }
+      alpha *= ALPHA_DECAY;
+    }
+
+    // ---- live activity: electric pulses + sustained "in use" glow -------
+    var pulses = [], flashes = new Map(), inUseUntil = new Map();
+    var thinking = false;
+    function pulse(fromId, toId, color, dur) {
+      pulses.push({ fromId: fromId, toId: toId, start: performance.now(), dur: dur || 700, color: color || "#eaf2ff",
+        jitter: [] });
+    }
+    function flashNode(id, color, dur, sustain) {
+      flashes.set(id, { start: performance.now(), dur: dur || 900, color: color || "#eaf2ff" });
+      // `sustain: false` is a node that was merely *considered* — it blinks
+      // and is gone. Only a node actually used earns the lasting glow (and
+      // with it, an electrified edge), so the two read differently.
+      if (sustain !== false) inUseUntil.set(id, performance.now() + 6000);
+    }
+
+    var lastProjected = new Map();
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = "#05060f";
+      ctx.fillRect(0, 0, W, H);
+
+      for (var s = 0; s < stars.length; s++) {
+        var st = stars[s];
+        var sp = project(st.x, st.y, st.z);
+        if (!sp || sp.sx < -20 || sp.sx > W + 20 || sp.sy < -20 || sp.sy > H + 20) continue;
+        ctx.globalAlpha = st.a * Math.min(1, sp.scale * 3);
+        ctx.fillStyle = "#dfe6ff";
+        ctx.beginPath(); ctx.arc(sp.sx, sp.sy, st.r, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      var hasSearch = !!searchTerm;
+      var proj = [];
+      lastProjected = new Map();
+      for (var pI = 0; pI < nodes.length; pI++) {
+        var nd0 = nodes[pI];
+        if (!visible(nd0)) continue;
+        var p0 = project(nd0.x, nd0.y, nd0.z);
+        if (!p0) continue;
+        lastProjected.set(nd0.id, p0);
+        proj.push({ n: nd0, p: p0 });
+      }
+      proj.sort(function (a, b) { return b.p.depth - a.p.depth; });
+
+      var now = performance.now();
+      // How much of the brain is live right now — drives the aura and the
+      // number of surface arcs, so the effect reports real work.
+      var activeCount = 0;
+      inUseUntil.forEach(function (until) { if (until > now) activeCount++; });
+      var labelQueue = [];
+
+      // edges: calm line normally, jagged "electric" flicker while a pulse
+      // rides them (the coordinator's edges also flicker gently while the
+      // agent is actively thinking, per "activate in real time when we ask
+      // the AI to do something").
+      for (var i = 0; i < edges.length; i++) {
+        var e = edges[i];
+        var a = byId.get(e.source), b = byId.get(e.target);
+        if (!a || !b || !visible(a) || !visible(b)) continue;
+        if (hasSearch && !(matches(a) && matches(b))) continue;
+        var pa = lastProjected.get(a.id), pb = lastProjected.get(b.id);
+        if (!pa || !pb) continue;
+        // An edge electrifies when a node it touches is actually in use —
+        // not merely because the agent is thinking. The graph is a star, so
+        // "thinking electrifies every coordinator edge" meant every edge in
+        // the whole brain lit at once and the display said nothing about
+        // what was being consulted.
+        var electrified = (inUseUntil.get(a.id) > now) || (inUseUntil.get(b.id) > now);
+        ctx.globalAlpha = Math.min(1, (pa.scale + pb.scale) * 0.9);
+        if (electrified) {
+          drawElectricSegment(pa, pb, "rgba(125,211,252,0.75)", 1.4, 4);
+        } else {
+          drawLiveWire(pa, pb, a, b, i, now);
+        }
+      }
+      ctx.globalAlpha = 1;
+
+      for (var n2 = 0; n2 < proj.length; n2++) {
+        var nd = proj[n2].n, p = proj[n2].p;
+        var dim = hasSearch && !matches(nd);
+        var isBrain = nd.id === COORDINATOR_ID;
+        var breathing = isBrain ? (1 + Math.sin(now / 900) * 0.12) : 1;
+        var r = nodeRadius(nd) * breathing * Math.min(2.2, Math.max(0.35, p.scale * 1.15));
+        var color = nodeColor(nd);
+        var inUse = inUseUntil.has(nd.id) && inUseUntil.get(nd.id) > now;
+        var baseAlpha = dim ? 0.12 : 1;
+
+        // sustained "in use" halo — separate from the sharp activity flash
+        if (inUse && !isBrain) {
+          var useT = (inUseUntil.get(nd.id) - now) / 6000;
+          ctx.globalAlpha = 0.25 + 0.15 * Math.sin(now / 260) * useT;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(p.sx, p.sy, r + 6 + Math.sin(now / 260) * 2, 0, Math.PI * 2); ctx.stroke();
+        }
+
+        ctx.globalAlpha = baseAlpha;
+
+        // The coordinator is a real brain, not a dot: a mesh drawn through
+        // the same camera, so orbiting shows a different profile. Skill
+        // nodes keep the atom treatment below — that contrast is the point,
+        // atoms of knowledge orbiting the brain.
+        if (isBrain) {
+          var inUseNow = inUseUntil.get(nd.id) > now;
+          var energy = thinking ? 1 : (inUseNow ? 0.55 : 0);
+          if (!energy && activeCount > 0) energy = 0.35;  // something, somewhere, is working
+          var aura = ctx.createRadialGradient(p.sx, p.sy, r * 0.5, p.sx, p.sy, r * 4.2);
+          aura.addColorStop(0, "rgba(244,190,205," + (0.20 + 0.22 * energy) + ")");
+          aura.addColorStop(0.5, "rgba(180,140,255,0.08)");
+          aura.addColorStop(1, "rgba(0,0,0,0)");
+          ctx.fillStyle = aura;
+          ctx.beginPath(); ctx.arc(p.sx, p.sy, r * 4.2, 0, Math.PI * 2); ctx.fill();
+
+          drawBrain(nd, now, energy);
+
+          if (nd === hoverNode || nd === selectedNode) {
+            ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = 1.2;
+            ctx.beginPath(); ctx.arc(p.sx, p.sy, r * 2.1, 0, Math.PI * 2); ctx.stroke();
+          }
+          ctx.globalAlpha = 0.9;
+          ctx.fillStyle = "#f2d7de";
+          ctx.font = "600 12px -apple-system, Segoe UI, system-ui, sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(nd.label, p.sx, p.sy - r * 2.3);
+          ctx.globalAlpha = 1;
+          continue;   // the dot/atom treatment below is for skill nodes
+        }
+
+        // Halo: stepped alpha rather than a solid-colour centre. The old
+        // gradient started fully opaque over a huge radius, which blew the
+        // central brain out into a white smear that washed out everything
+        // near it.
+        var glowR = isBrain ? r * 2.8 : r * 2.6;
+        var grad = ctx.createRadialGradient(p.sx, p.sy, r * 0.4, p.sx, p.sy, glowR);
+        grad.addColorStop(0, withAlpha(color, isBrain ? 0.55 : 0.45));
+        grad.addColorStop(0.45, withAlpha(color, 0.14));
+        grad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.arc(p.sx, p.sy, glowR, 0, Math.PI * 2); ctx.fill();
+
+        // Atom: an electron on a tilted orbit around the core. The orbit
+        // ellipse is squashed by a slow sine so it reads as a ring seen in
+        // 3D rather than a flat circle drawn on the screen.
+        if (!dim) {
+          var orbitR = r * 1.9;
+          var tilt = now / 2600 + hashHue(nd.id) / 57;
+          var squash = 0.28 + 0.24 * (1 + Math.sin(now / 1700 + nd.x * 0.01)) / 2;
+          ctx.save();
+          ctx.translate(p.sx, p.sy);
+          ctx.rotate(tilt);
+          ctx.globalAlpha = baseAlpha * 0.32;
+          ctx.strokeStyle = color; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.ellipse(0, 0, orbitR, orbitR * squash, 0, 0, Math.PI * 2); ctx.stroke();
+          var ePhase = now / 900 * (isBrain ? 1.6 : 1) + hashHue(nd.id);
+          var ex = Math.cos(ePhase) * orbitR, ey = Math.sin(ePhase) * orbitR * squash;
+          ctx.globalAlpha = baseAlpha * 0.95;
+          ctx.fillStyle = "#eaf4ff";
+          ctx.shadowBlur = 6; ctx.shadowColor = color;
+          ctx.beginPath(); ctx.arc(ex, ey, Math.max(1.2, r * 0.16), 0, Math.PI * 2); ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.restore();
+          ctx.globalAlpha = baseAlpha;
+        }
+
+        // core: coloured body with a hot centre, so it looks lit from within
+        ctx.fillStyle = color;
+        ctx.beginPath(); ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2); ctx.fill();
+        var core = ctx.createRadialGradient(p.sx - r * 0.25, p.sy - r * 0.3, 0, p.sx, p.sy, r);
+        core.addColorStop(0, "rgba(255,255,255,0.85)");
+        core.addColorStop(0.6, "rgba(255,255,255,0.10)");
+        core.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = core;
+        ctx.beginPath(); ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2); ctx.fill();
+
+        if (isBrain) {
+          // inner "neuron" specks orbiting the core — reads as a living brain,
+          // not just a plain sphere; also flickers faster while thinking.
+          var speckCount = 10, speed = thinking ? 2.2 : 0.6;
+          for (var sk = 0; sk < speckCount; sk++) {
+            var phase = now / 1000 * speed + sk * (Math.PI * 2 / speckCount);
+            var sx3 = Math.cos(phase) * r * 0.55, sy3 = Math.sin(phase * 1.3) * r * 0.4, sz3 = Math.sin(phase) * r * 0.55;
+            var w3 = rotate(sx3, sy3, sz3);
+            var sxp = p.sx + w3[0] * p.scale * 0.5, syp = p.sy + w3[1] * p.scale * 0.5;
+            ctx.globalAlpha = 0.5 + 0.5 * Math.sin(phase * 2);
+            ctx.fillStyle = "#bfe0ff";
+            ctx.beginPath(); ctx.arc(sxp, syp, 1.6, 0, Math.PI * 2); ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+        }
+
+        if (nd === hoverNode || nd === selectedNode) {
+          ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(p.sx, p.sy, r + 3, 0, Math.PI * 2); ctx.stroke();
+        }
+        var flash = flashes.get(nd.id);
+        if (flash) {
+          var ft = (now - flash.start) / flash.dur;
+          if (ft >= 1) flashes.delete(nd.id);
+          else {
+            ctx.globalAlpha = 1 - ft; ctx.strokeStyle = flash.color; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(p.sx, p.sy, r + 4 + ft * 18, 0, Math.PI * 2); ctx.stroke();
+          }
+        }
+        // Label on how big the node actually is on screen, not on a fixed
+        // camera distance — the auto-framed camera sits further back for a
+        // big graph, which used to silently hide every label. Queued rather
+        // than drawn here so overlapping labels can be dropped: back-to-front
+        // node order would otherwise let a distant node's label land on top
+        // of a near one's, which is how "Rust ownership model" ended up
+        // printed through "TypeScript generics".
+        if (isBrain || p.scale > 0.5 || nd === hoverNode || nd === selectedNode) {
+          labelQueue.push({
+            text: nd.label, x: p.sx, y: p.sy - r - 7,
+            size: 11 * Math.min(1.3, p.scale * 1.1),
+            alpha: dim ? 0.15 : 0.85,
+            priority: (nd === hoverNode || nd === selectedNode || isBrain) ? 99 : p.scale,
+          });
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // Labels last, nearest first, dropping any that would overlap one
+      // already placed — a readable subset beats a complete but unreadable
+      // pile.
+      labelQueue.sort(function (a, b) { return b.priority - a.priority; });
+      ctx.textAlign = "center";
+      var placed = [];
+      for (var li = 0; li < labelQueue.length; li++) {
+        var lab = labelQueue[li];
+        ctx.font = lab.size + "px -apple-system, Segoe UI, system-ui, sans-serif";
+        var halfW = ctx.measureText(lab.text).width / 2 + 3;
+        var halfH = lab.size * 0.75;
+        // keep the whole label inside the panel — centred text on a node near
+        // the edge used to run off and get cut in half
+        lab.x = Math.min(W - halfW - 4, Math.max(halfW + 4, lab.x));
+        var box = { l: lab.x - halfW, r: lab.x + halfW, t: lab.y - halfH, b: lab.y + halfH * 0.4 };
+        var collides = false;
+        for (var pj = 0; pj < placed.length; pj++) {
+          var q = placed[pj];
+          if (box.l < q.r && box.r > q.l && box.t < q.b && box.b > q.t) { collides = true; break; }
+        }
+        if (collides) continue;
+        placed.push(box);
+        ctx.globalAlpha = lab.alpha;
+        ctx.fillStyle = "rgba(5,6,15,0.55)";
+        ctx.fillText(lab.text, lab.x + 1, lab.y + 1); // faint backing so text survives over a bright edge
+        ctx.fillStyle = "#dfe6ff";
+        ctx.fillText(lab.text, lab.x, lab.y);
+      }
+      ctx.globalAlpha = 1;
+
+      // electric pulses: jagged flickering bolt traveling from source to target
+      for (var pi = pulses.length - 1; pi >= 0; pi--) {
+        var pu = pulses[pi];
+        var t = (now - pu.start) / pu.dur;
+        if (t >= 1) { pulses.splice(pi, 1); continue; }
+        var from = byId.get(pu.fromId), to = byId.get(pu.toId);
+        if (!from || !to) { pulses.splice(pi, 1); continue; }
+        var pf = project(from.x, from.y, from.z), pt = project(to.x, to.y, to.z);
+        if (!pf || !pt) continue;
+        var fade = Math.sin(Math.PI * Math.min(1, t * 1.1));
+        ctx.globalAlpha = fade;
+        drawElectricSegment(pf, pt, pu.color, 2, 5);
+        // bright traveling head
+        var hx = pf.sx + (pt.sx - pf.sx) * t, hy = pf.sy + (pt.sy - pf.sy) * t;
+        var rad = 7 * Math.max(0.4, (pf.scale + pt.scale) / 2);
+        var pg = ctx.createRadialGradient(hx, hy, 0, hx, hy, rad);
+        pg.addColorStop(0, pu.color); pg.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = pg;
+        ctx.beginPath(); ctx.arc(hx, hy, rad, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // A lightning-style jagged path between two projected points, jittered
+    // fresh every call so it flickers frame to frame instead of looking static.
+    // A connection is never a dead grey hairline: every link carries a
+    // current. The wire itself is a faint gradient between the two nodes'
+    // own colours, and a bright charge runs along it continuously — the
+    // graph reads as powered even when the agent is idle, which is the
+    // whole point of "electricity flowing between the nodes". Speed and
+    // phase are derived from the edge index so the charges don't all march
+    // in lockstep, which would look mechanical rather than alive.
+    function drawLiveWire(pa, pb, a, b, index, now) {
+      var ca = nodeColor(a), cb = nodeColor(b);
+      var wire = ctx.createLinearGradient(pa.sx, pa.sy, pb.sx, pb.sy);
+      wire.addColorStop(0, withAlpha(ca, 0.30));
+      wire.addColorStop(0.5, "rgba(150,190,255,0.16)");
+      wire.addColorStop(1, withAlpha(cb, 0.30));
+      ctx.strokeStyle = wire;
+      ctx.lineWidth = (a.id === COORDINATOR_ID || b.id === COORDINATOR_ID ? 1.5 : 1.1)
+        * Math.min(1.6, pa.scale + pb.scale);
+      ctx.beginPath(); ctx.moveTo(pa.sx, pa.sy); ctx.lineTo(pb.sx, pb.sy); ctx.stroke();
+
+      // the charge: a short bright dash sliding along the wire
+      var speed = 0.16 + (index % 7) * 0.035;
+      var head = ((now / 1000) * speed + (index % 13) / 13) % 1;
+      var tail = Math.max(0, head - 0.14);
+      var hx = pa.sx + (pb.sx - pa.sx) * head, hy = pa.sy + (pb.sy - pa.sy) * head;
+      var tx = pa.sx + (pb.sx - pa.sx) * tail, ty = pa.sy + (pb.sy - pa.sy) * tail;
+      var spark = ctx.createLinearGradient(tx, ty, hx, hy);
+      spark.addColorStop(0, "rgba(125,211,252,0)");
+      spark.addColorStop(1, withAlpha(cb, 0.85));
+      ctx.strokeStyle = spark;
+      ctx.lineWidth = 2 * Math.min(1.5, (pa.scale + pb.scale) * 0.7);
+      ctx.shadowBlur = 8; ctx.shadowColor = cb;
+      ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(hx, hy); ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    function withAlpha(color, alpha) {
+      if (color.charAt(0) === "#") {
+        var hex = color.slice(1);
+        if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+        var num = parseInt(hex, 16);
+        return "rgba(" + ((num >> 16) & 255) + "," + ((num >> 8) & 255) + "," + (num & 255) + "," + alpha + ")";
+      }
+      if (color.indexOf("hsl(") === 0) return color.replace("hsl(", "hsla(").replace(")", "," + alpha + ")");
+      return color;
+    }
+
+    function drawElectricSegment(pa, pb, color, width, segments) {
+      var dx = pb.sx - pa.sx, dy = pb.sy - pa.sy;
+      var len = Math.hypot(dx, dy) || 1;
+      var nx = -dy / len, ny = dx / len;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(pa.sx, pa.sy);
+      for (var i = 1; i < segments; i++) {
+        var t = i / segments;
+        var jitter = (Math.random() - 0.5) * Math.min(14, len * 0.18);
+        ctx.lineTo(pa.sx + dx * t + nx * jitter, pa.sy + dy * t + ny * jitter);
+      }
+      ctx.lineTo(pb.sx, pb.sy);
+      ctx.stroke();
+    }
+
+    // The force layout drops nodes wherever they land, which left the whole
+    // graph bunched in one corner of the panel with most of the view empty.
+    // Until the user takes the camera themselves, keep easing it to frame
+    // whatever is currently visible — centred, and far enough back that the
+    // outermost node sits comfortably inside the panel.
+    var autoFrame = true;
+    function frameGraph() {
+      var cx = 0, cy = 0, cz = 0, count = 0;
+      for (var i = 0; i < nodes.length; i++) {
+        var n = nodes[i];
+        if (!visible(n)) continue;
+        cx += n.x; cy += n.y; cz += n.z; count++;
+      }
+      if (!count) return;
+      cx /= count; cy /= count; cz /= count;
+
+      // 90th percentile, not the maximum: a single node flung out by the
+      // force layout would otherwise set the framing radius on its own and
+      // push the camera so far back that the whole graph became a speck in
+      // the middle of an empty panel.
+      var radii = [];
+      for (var j = 0; j < nodes.length; j++) {
+        var m = nodes[j];
+        if (!visible(m)) continue;
+        radii.push(Math.hypot(m.x - cx, m.y - cy, m.z - cz));
+      }
+      radii.sort(function (p, q) { return p - q; });
+      var spread = Math.max(1, radii[Math.floor(radii.length * 0.9)] || radii[radii.length - 1] || 1);
+
+      // fit that sphere into the smaller screen axis, with margin
+      var want = Math.min(2400, Math.max(300, (spread * FOCAL) / (Math.min(W, H) * 0.38)));
+      var ease = 0.06;
+      cam.tx += (cx - cam.tx) * ease;
+      cam.ty += (cy - cam.ty) * ease;
+      cam.tz += (cz - cam.tz) * ease;
+      cam.dist += (want - cam.dist) * ease;
+    }
+
+    var rafId = null;
+    function loop() { tick(); if (autoFrame) frameGraph(); draw(); rafId = requestAnimationFrame(loop); }
+
+    // ---- interaction: drag rotates, shift/right-drag pans, wheel zooms --
+    var hoverNode = null, selectedNode = null, dragNode = null, dragNodeDepth = 0;
+    var rotating = false, panning = false;
+    var lastMouse = [0, 0];
+
+    function pickNode(sx, sy) {
+      var best = null, bestD = Infinity;
+      lastProjected.forEach(function (p, id) {
+        var n = byId.get(id);
+        if (!n || !visible(n)) return;
+        var dx = sx - p.sx, dy = sy - p.sy, d2 = dx * dx + dy * dy;
+        var r = nodeRadius(n) * Math.max(0.5, p.scale) + 6;
+        if (d2 < r * r && d2 < bestD) { bestD = d2; best = n; }
+      });
+      return best;
+    }
+
+    canvas.addEventListener("mousedown", function (ev) {
+      autoFrame = false; // the camera is the user's from here on
+      lastMouse = [ev.clientX, ev.clientY];
+      var n = pickNode(ev.clientX - canvas.getBoundingClientRect().left, ev.clientY - canvas.getBoundingClientRect().top);
+      if (n && ev.button === 0 && n.id !== COORDINATOR_ID) {
+        dragNode = n;
+        var p = lastProjected.get(n.id);
+        dragNodeDepth = p ? p.depth : cam.dist;
+        n.fx = n.x; n.fy = n.y; n.fz = n.z;
+        alpha = Math.max(alpha, 0.3);
+      } else if (ev.button === 2 || ev.shiftKey) {
+        panning = true; canvas.classList.add("dragging");
+      } else {
+        rotating = true; canvas.classList.add("dragging");
+      }
+    });
+    window.addEventListener("mousemove", function (ev) {
+      var rect = canvas.getBoundingClientRect();
+      var lx = ev.clientX - rect.left, ly = ev.clientY - rect.top;
+      var dx = ev.clientX - lastMouse[0], dy = ev.clientY - lastMouse[1];
+      lastMouse = [ev.clientX, ev.clientY];
+      if (dragNode) {
+        var scale = dragNodeDepth / FOCAL;
+        var d = invRotate(dx * scale, dy * scale, 0);
+        dragNode.fx += d[0]; dragNode.fy += d[1]; dragNode.fz += d[2];
+      } else if (rotating) {
+        cam.yaw += dx * 0.0055;
+        cam.pitch = Math.max(-1.45, Math.min(1.45, cam.pitch + dy * 0.0055));
+      } else if (panning) {
+        var panScale = cam.dist / FOCAL;
+        var pd = invRotate(dx * panScale, dy * panScale, 0);
+        cam.tx -= pd[0]; cam.ty -= pd[1]; cam.tz -= pd[2];
+      } else if (lx >= 0 && lx <= W && ly >= 0 && ly <= H) {
+        var n = pickNode(lx, ly);
+        hoverNode = n;
+        var tip = document.getElementById("tooltip");
+        if (n) {
+          tip.style.display = "block";
+          tip.style.left = (ev.clientX + 14) + "px"; tip.style.top = (ev.clientY + 10) + "px";
+          var kindLabel = n.id === COORDINATOR_ID ? "central brain" : categoryOf(n);
+          tip.innerHTML = "<b>" + escapeHtml(n.label) + "</b><br><span style='color:#8b93b8'>" + escapeHtml(kindLabel) + "</span>";
+        } else tip.style.display = "none";
+      }
+    });
+    window.addEventListener("mouseup", function () {
+      if (dragNode) { dragNode.fx = null; dragNode.fy = null; dragNode.fz = null; dragNode = null; }
+      rotating = false; panning = false;
+      canvas.classList.remove("dragging");
+    });
+    canvas.addEventListener("contextmenu", function (ev) { ev.preventDefault(); });
+    canvas.addEventListener("dblclick", function (ev) {
+      var rect = canvas.getBoundingClientRect();
+      var n = pickNode(ev.clientX - rect.left, ev.clientY - rect.top);
+      if (n) { n.fx = null; n.fy = null; n.fz = null; }
+    });
+    canvas.addEventListener("click", function (ev) {
+      if (Math.hypot(ev.clientX - lastMouse[0], ev.clientY - lastMouse[1]) > 3) return;
+      var rect = canvas.getBoundingClientRect();
+      var n = pickNode(ev.clientX - rect.left, ev.clientY - rect.top);
+      if (n) openInspector(n); else closeInspector();
+    });
+    canvas.addEventListener("wheel", function (ev) {
+      ev.preventDefault();
+      autoFrame = false;
+      var factor = Math.exp(ev.deltaY * 0.0012);
+      cam.dist = Math.min(6000, Math.max(80, cam.dist * factor));
+    }, { passive: false });
+
+    // ---- legend / filters -----------------------------------------------
+    var LEGEND_ITEMS = [
+      { key: "skill", label: "Skills", color: COLORS.skill },
+      { key: "conversation", label: "Conversations", color: COLORS.conversation },
+      { key: "tool", label: "Tools", color: COLORS.tool },
+      { key: "language", label: "Languages", color: COLORS.language },
+      { key: "pattern", label: "Patterns", color: COLORS.pattern },
+      { key: "project", label: "Projects", color: COLORS.project },
+      { key: "preference", label: "Preferences", color: COLORS.preference },
+    ];
+    // Categories are open-ended by design ("users can define new
+    // categories"), and the addon library brings its own — agent-orchestration,
+    // research-and-web and so on. A hardcoded legend would leave those
+    // filterless and unlabelled, so whatever the graph actually contains is
+    // appended to the known set, taking its colour from the same hash the
+    // renderer uses.
+    function legendItems(graph) {
+      var items = LEGEND_ITEMS.slice();
+      var known = {};
+      items.forEach(function (it) { known[it.key] = true; });
+      (graph && graph.nodes ? graph.nodes : []).forEach(function (n) {
+        var cat = n.category;
+        if (!cat || known[cat] || cat === "brain") return;
+        known[cat] = true;
+        items.push({
+          key: cat,
+          label: cat.replace(/[-_]/g, " ").replace(/\w/g, function (c) { return c.toUpperCase(); }),
+          color: COLORS[cat] || ("hsl(" + hashHue(cat) + ",70%,60%)"),
+        });
+      });
+      return items;
+    }
+
+    function buildLegend(graph) {
+      var el = document.getElementById("nvLegend");
+      el.innerHTML = legendItems(graph).map(function (it) {
+        return "<button class='chip on' data-key='" + it.key + "'>" +
+          "<span class='dot' style='background:" + it.color + "'></span>" + it.label + "</button>";
+      }).join("");
+      el.querySelectorAll(".chip").forEach(function (chip) {
+        chip.addEventListener("click", function () {
+          var on = !chip.classList.contains("on");
+          chip.classList.toggle("on", on);
+          filters[chip.dataset.key] = on;
+        });
+      });
+    }
+    function renderStats(graph) {
+      var el = document.getElementById("nvStats");
+      el.innerHTML = graph.counts.nodes + " nodes · " + graph.counts.edges + " edges<br>" +
+        "<span style='color:#5b6289'>drag to rotate · shift/right-drag to pan · scroll to zoom</span>";
+    }
+
+    function refreshGraph() {
+      return fetch("/api/graph").then(function (r) { return r.json(); }).then(function (graph) {
+        graph.nodes.forEach(function (n) {
+          var existing = byId.get(n.id);
+          if (existing) {
+            existing.label = n.label; existing.category = n.category; existing.tags = n.tags;
+            existing.usage_count = n.usage_count; existing.source_count = n.source_count;
+          } else {
+            var a = Math.random() * Math.PI * 2, b = Math.acos(Math.random() * 2 - 1), r = 40 + Math.random() * 60;
+            n.x = r * Math.sin(b) * Math.cos(a); n.y = r * Math.sin(b) * Math.sin(a); n.z = r * Math.cos(b);
+            n.vx = 0; n.vy = 0; n.vz = 0; n.fx = null; n.fy = null; n.fz = null;
+            nodes.push(n); byId.set(n.id, n);
+          }
+        });
+        edges = graph.edges;
+        buildLegend(graph);      // new categories become filterable chips
+        renderStats(graph);
+        alpha = Math.max(alpha, 0.3);
+        return graph;
+      });
+    }
+
+    // ---- node inspector (read + edit) ------------------------------------
+    var EDITABLE_KINDS = null; // every non-coordinator node here is a real skill file
+    var CATEGORIES = ["skill", "conversation", "tool", "language", "framework", "pattern", "project", "preference"];
+
+    function panelKindLabel(n) { return n.id === COORDINATOR_ID ? "central brain" : categoryOf(n); }
+
+    function renderInspectorRead(n, full) {
+      var content = document.getElementById("inspectorContent");
+      var html = "<h2>" + escapeHtml(n.label) + "</h2><div class='meta'>" + escapeHtml(panelKindLabel(n)) +
+        (n.usage_count != null ? " · used " + n.usage_count + "x" : "") + "</div>";
+      if (full) {
+        ["problem", "solution", "code_examples", "best_practices", "edge_cases"].forEach(function (key) {
+          var label = key.replace(/_/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+          if (full[key]) html += "<div class='section-label'>" + label + "</div><div class='body'>" + escapeHtml(full[key]) + "</div>";
+        });
+        if (full.sources && full.sources.length) {
+          html += "<div class='section-label'>Sources</div>";
+          full.sources.forEach(function (s) {
+            html += "<div class='source'>— <a href='" + escapeHtml(s.url) + "' target='_blank' rel='noopener'>" + escapeHtml(s.url) + "</a><br>\"" + escapeHtml(s.quote) + "\"</div>";
+          });
+        }
+        if (full.tags && full.tags.length) {
+          html += "<div class='tags'>" + full.tags.map(function (t) { return "<span class='tag'>" + escapeHtml(t) + "</span>"; }).join("") + "</div>";
+        }
+      }
+      content.innerHTML = html;
+      document.getElementById("inspectorEdit").style.display = (n.id !== COORDINATOR_ID) ? "block" : "none";
+    }
+
+    function openInspector(n) {
+      selectedNode = n;
+      if (n.id === COORDINATOR_ID) {
+        renderInspectorRead(n, null);
+        document.getElementById("nodeInspector").classList.add("open");
+        return;
+      }
+      var content = document.getElementById("inspectorContent");
+      content.innerHTML = "<h2>" + escapeHtml(n.label) + "</h2><div class='meta'>loading…</div>";
+      document.getElementById("nodeInspector").classList.add("open");
+      fetch("/api/node/" + encodeURIComponent(n.id)).then(function (r) {
+        if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || ("HTTP " + r.status)); });
+        return r.json();
+      }).then(function (full) {
+        n.__full = full;
+        renderInspectorRead(n, full);
+      }).catch(function (e) {
+        content.innerHTML += "<div class='err'>" + escapeHtml(e.message) + "</div>";
+      });
+    }
+    function closeInspector() {
+      selectedNode = null;
+      document.getElementById("nodeInspector").classList.remove("open");
+    }
+    document.getElementById("inspectorClose").addEventListener("click", closeInspector);
+
+    function renderInspectorEdit(n, full) {
+      var content = document.getElementById("inspectorContent");
+      var html = "<h2>Edit " + escapeHtml(full.category) + "</h2>";
+      html += "<label>Title</label><input type='text' class='field' id='fTitle' value=\"" + escapeHtml(full.title) + "\">";
+      html += "<label>Category</label><select id='fCategory'>" + CATEGORIES.map(function (c) {
+        return "<option value='" + c + "'" + (c === full.category ? " selected" : "") + ">" + c + "</option>";
+      }).join("") + "</select>";
+      ["problem", "solution", "code_examples", "best_practices", "edge_cases"].forEach(function (key) {
+        var label = key.replace(/_/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+        html += "<label>" + label + "</label><textarea id='f_" + key + "'>" + escapeHtml(full[key] || "") + "</textarea>";
+      });
+      html += "<label>Tags (comma separated)</label><input type='text' class='field' id='fTags' value=\"" + escapeHtml((full.tags || []).join(", ")) + "\">";
+      html += "<label>Sources (one per line: url | quote)</label><textarea id='fSources'>" +
+        escapeHtml((full.sources || []).map(function (s) { return s.url + " | " + s.quote; }).join("\n")) + "</textarea>";
+      html += "<div class='actions'><button class='btn primary' id='fSave'>Save</button><button class='btn' id='fCancel'>Cancel</button>" +
+        "<button class='btn danger' id='fDelete'>Delete</button></div>";
+      html += "<div class='err' id='fErr'></div>";
+      content.innerHTML = html;
+
+      document.getElementById("fCancel").addEventListener("click", function () { renderInspectorRead(n, full); });
+      document.getElementById("fDelete").addEventListener("click", function () {
+        if (!confirm("Delete \"" + full.title + "\"? This removes the skill.md file.")) return;
+        fetch("/api/node/" + encodeURIComponent(n.id), { method: "DELETE" }).then(function () { closeInspector(); });
+      });
+      document.getElementById("fSave").addEventListener("click", function () {
+        var sources = document.getElementById("fSources").value.split("\n").map(function (line) {
+          var idx = line.indexOf("|");
+          if (idx < 0) return null;
+          var url = line.slice(0, idx).trim(), quote = line.slice(idx + 1).trim();
+          return url ? { url: url, quote: quote } : null;
+        }).filter(Boolean);
+        var payload = {
+          title: document.getElementById("fTitle").value,
+          category: document.getElementById("fCategory").value,
+          tags: document.getElementById("fTags").value.split(",").map(function (s) { return s.trim(); }).filter(Boolean),
+          sources: sources,
+        };
+        ["problem", "solution", "code_examples", "best_practices", "edge_cases"].forEach(function (key) {
+          payload[key] = document.getElementById("f_" + key).value;
+        });
+        var saveBtn = document.getElementById("fSave");
+        saveBtn.disabled = true; saveBtn.textContent = "Saving…";
+        fetch("/api/node/" + encodeURIComponent(n.id), {
+          method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+        }).then(function (r) {
+          if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || ("HTTP " + r.status)); });
+          return r.json();
+        }).then(function () { return refreshGraph(); }).then(function () {
+          openInspector(byId.get(n.id) || n);
+        }).catch(function (e) {
+          saveBtn.disabled = false; saveBtn.textContent = "Save";
+          document.getElementById("fErr").textContent = e.message;
+        });
+      });
+    }
+    document.getElementById("inspectorEdit").addEventListener("click", function () {
+      if (!selectedNode || selectedNode.id === COORDINATOR_ID || !selectedNode.__full) return;
+      renderInspectorEdit(selectedNode, selectedNode.__full);
+    });
+
+    // ---- live activity stream --------------------------------------------
+    var activityEntries = [];
+    function logActivity(text) {
+      activityEntries.unshift(text);
+      activityEntries = activityEntries.slice(0, 10);
+      document.getElementById("nvActivityLog").innerHTML = activityEntries.map(function (t) {
+        return "<div class='row'>" + escapeHtml(t) + "</div>";
+      }).join("");
+    }
+
+    function handleActivity(data) {
+      var route = data.route || COORDINATOR_ID;
+      if (data.kind === "agent_turn") {
+        // Thinking is the coordinator's own state — it pulses, the rest of
+        // the brain stays quiet until something is actually consulted.
+        thinking = data.phase === "start";
+        if (thinking) { logActivity("thinking…"); flashNode(COORDINATOR_ID, "#eaf2ff", 900, false); }
+      } else if (data.kind === "brain_search") {
+        // Candidates: a brief, dim shimmer. Considered is not the same as
+        // used, and the display should be able to tell you which is which.
+        logActivity("searching brain: " + (data.query || ""));
+        (data.ids || []).forEach(function (id, i) {
+          setTimeout(function () { flashNode(id, "#7c84ab", 420, false); }, i * 45);
+        });
+      } else if (data.kind === "conversation_logged") {
+        // Walk the charge along the path the server sent — brain to the
+        // conversations branch, then branch to the atom that was just
+        // grown. Hops are staggered so you see it travel outward rather
+        // than the whole limb lighting simultaneously.
+        logActivity("recorded: " + (data.label || data.id));
+        refreshGraph().then(function () {
+          var path = data.path || [COORDINATOR_ID, data.branch, data.id];
+          for (var h = 0; h + 1 < path.length; h++) {
+            (function (from, to, hop) {
+              setTimeout(function () {
+                pulse(from, to, COLORS.conversation, 620);
+                flashNode(to, COLORS.conversation, hop === path.length - 2 ? 1100 : 500,
+                          hop === path.length - 2);
+              }, hop * 380);
+            })(path[h], path[h + 1], h);
+          }
+        });
+      } else if (data.kind === "skill_used") {
+        // The one skill actually read — a real bolt from the brain to it,
+        // and a sustained glow so you can see what's informing the answer.
+        logActivity("using skill: " + (data.label || data.id));
+        pulse(COORDINATOR_ID, data.id, "#6ee7b7", 650);
+        flashNode(data.id, "#6ee7b7", 950);
+      } else if (data.kind === "skill_learned") {
+        logActivity("learned: " + (data.label || data.id));
+        refreshGraph().then(function () { pulse(COORDINATOR_ID, data.id, "#6ee7b7", 700); flashNode(data.id, "#6ee7b7", 1000); });
+      } else if (data.kind === "node_edited") {
+        if (!data.replay) logActivity("edited: " + (data.label || data.id));
+        refreshGraph().then(function () { pulse(COORDINATOR_ID, data.id, "#4fd1ff", 600); flashNode(data.id, "#4fd1ff", 800); });
+      } else if (data.kind === "node_deleted") {
+        logActivity("deleted: " + data.id);
+        refreshGraph();
+      } else if (data.kind === "file_saved") {
+        logActivity("saved: " + data.path);
+      } else if (data.kind === "tool_call" || data.kind === "node_used") {
+        if (!data.replay) logActivity((data.tool || "used") + ": " + (data.label || data.id || ""));
+        var target = byId.has(route) ? route : null;
+        if (target && target !== COORDINATOR_ID) {
+          pulse(COORDINATOR_ID, target, "#6ea8ff", 500);
+          flashNode(target, "#6ea8ff", 700);  // sustain: the path stays live while the tool is in use
+        } else {
+          // Generic tool activity is real, but unless a specific node is
+          // named it should not mark the whole coordinator star as "in use".
+          flashNode(COORDINATOR_ID, "#6ea8ff", 500, false);
+        }
+      }
+    }
+
+    function connectEvents() {
+      try {
+        var proto = location.protocol === "https:" ? "wss:" : "ws:";
+        var ws = new WebSocket(proto + "//" + location.host + "/ws/events");
+        ws.onmessage = function (ev) { try { handleActivity(JSON.parse(ev.data)); } catch (e) {} };
+        ws.onopen = function () { document.getElementById("nvLiveDot").style.background = "#6ee7b7"; };
+        ws.onerror = function () { document.getElementById("nvLiveDot").style.background = "#f87171"; };
+        ws.onclose = function () { document.getElementById("nvLiveDot").style.background = "#f87171"; setTimeout(connectEvents, 2000); };
+      } catch (e) {}
+    }
+
+    document.getElementById("nvSearch") /* placeholder to keep hud id lookups local */;
+    hud.querySelector("#nvSearch").addEventListener("input", function (ev) { searchTerm = ev.target.value.trim().toLowerCase(); });
+
+    refreshGraph().then(function () {
+      initPositions();
+      buildLegend();
+      loop();
+      connectEvents();
+      setInterval(refreshGraph, 10000);
+    }).catch(function (err) {
+      document.getElementById("nvStats").textContent = "failed to load graph: " + err.message + " — retrying…";
+      setTimeout(function () {
+        refreshGraph().then(function () { initPositions(); buildLegend(); loop(); connectEvents(); setInterval(refreshGraph, 10000); })
+          .catch(function (err2) { document.getElementById("nvStats").textContent = "failed to load graph: " + err2.message; });
+      }, 1500);
+    });
+
+    return { resize: resize };
+  }
+
+  // =====================================================================
+  // Chat — code blocks in assistant replies render as real (read-only)
+  // CodeMirror views with a pop-out button that opens them as their own
+  // floating panel (kept open independently). Code blocks belonging to
+  // messages older than the last few turns auto-collapse to a one-line
+  // summary, unless the user explicitly expanded them.
+  // =====================================================================
+  var COMPACT_KEEP_RECENT = 4; // most recent N messages keep their code blocks expanded
+  var popoutCounter = 0;
+
+  function buildChatView(container) {
+    var wrap = document.createElement("div");
+    wrap.className = "chat-view";
+    var messagesEl = document.createElement("div");
+    messagesEl.className = "chat-messages";
+    var inputRow = document.createElement("div");
+    inputRow.className = "chat-input-row";
+    inputRow.innerHTML = "<input type='text' id='chatInput' placeholder='Message DariusAI…'><button id='chatSend'>Send</button>";
+    // An empty chat used to be a black void with a text box at the bottom,
+    // which reads as broken rather than idle. Removed on the first message.
+    var welcome = document.createElement("div");
+    welcome.className = "chat-welcome";
+    welcome.innerHTML =
+      "<div class='mark'>🧠</div>" +
+      "<h2>DariusAI</h2>" +
+      "<p>Ask for a change and it plans, writes, tests and verifies it — then files what it learned " +
+      "into the brain on the left, where you'll watch the node light up.</p>" +
+      "<div class='hints'>" +
+      "<span>“add a health endpoint and a test for it”</span>" +
+      "<span>“why is the settings panel closing?”</span>" +
+      "<span>“what do you already know about SQLite?”</span>" +
+      "</div>";
+    messagesEl.appendChild(welcome);
+
+    wrap.appendChild(messagesEl); wrap.appendChild(inputRow);
+    container.appendChild(wrap);
+
+    var messageCount = 0;
+
+    // Signals that a run of lines is code rather than prose. Deliberately
+    // conservative: a false positive turns an explanation into an unreadable
+    // code block, which is worse than a missed one.
+    // Strong signals settle it alone — no sentence of English begins with a
+    // shebang or `CREATE TABLE`. Weak ones are suggestive but appear in
+    // prose too (a trailing brace, an indented quotation), so they need
+    // corroboration. Two tiers, rather than one threshold that is either
+    // too eager on prose or too shy on a two-line shell snippet.
+    var STRONG_CODE_SIGNALS = [
+      /^#!/m,                                           // shebang
+      /^\s*(def|class|async\s+def)\s+\w+/m,             // python
+      /^\s*(function|const|let|var)\s+\w+\s*[=(]/m,     // js/ts
+      /^\s*(import|from|require|#include|using|package)\s+\S/m,
+      /^\s*(public|private|protected|static)\s+\w+\s+\w+/m,
+      /^\s*(SELECT|INSERT|UPDATE|DELETE|CREATE\s+TABLE|ALTER\s+TABLE)\b/im,
+      /^\s*<\/?[a-z][\w-]*[\s>\/]/m,                    // html/xml tag
+      /^\s*(npm|npx|pnpm|yarn|pip|pip3|git|dotnet|cargo|go|docker|kubectl)\s+\w+/m,
+      /^\s*(\$|PS>|>)\s*\w+/m,                          // shell prompt
+      /^\s*(Get|Set|New|Remove|Write)-[A-Z]\w+/m,       // powershell verb-noun
+    ];
+    var WEAK_CODE_SIGNALS = [
+      /[{};]\s*$/m,                                     // braces / statement ends
+      /^\s{2,}\S/m,                                     // indented block
+      /\b(return|if|else|for|while|try|catch)\b\s*[({:]/,
+      /[=!<>]==?|=>|->|::/,                             // operators
+    ];
+
+    function looksLikeCode(block) {
+      var lines = block.split("\n").filter(function (l) { return l.trim(); });
+      if (lines.length < 2) return false;
+      // Prose gives itself away: sentences ending in a full stop, without
+      // the punctuation code leans on.
+      var prosey = lines.filter(function (l) {
+        return /[.!?]\s*$/.test(l.trim()) && !/[;{}()\]]$/.test(l.trim());
+      }).length;
+      if (prosey > lines.length * 0.6) return false;
+
+      if (STRONG_CODE_SIGNALS.some(function (re) { return re.test(block); })) return true;
+      return WEAK_CODE_SIGNALS.filter(function (re) { return re.test(block); }).length >= 2;
+    }
+
+    function guessLanguage(block) {
+      if (/^#!.*\b(bash|sh)\b/m.test(block) || /^\s*(npm|git|pip|docker|cd)\s/m.test(block)) return "bash";
+      if (/^\s*(def|class)\s|\bprint\(|^\s*import\s+\w+$/m.test(block)) return "python";
+      if (/\b(const|let|function|=>|console\.log)\b/.test(block)) return "javascript";
+      if (/^\s*<\/?[a-z]/m.test(block)) return "html";
+      if (/^\s*(SELECT|CREATE TABLE|INSERT)\b/im.test(block)) return "sql";
+      if (/^\s*(public|private)\s+(class|static)/m.test(block)) return "java";
+      if (/^\s*(Write-|Get-|\$\w+\s*=)/m.test(block)) return "powershell";
+      return "";
+    }
+
+    /**
+     * Split an assistant message into text and code segments.
+     *
+     * Fenced blocks are authoritative. Anything left over is then scanned
+     * for *unfenced* code, because a model that forgets its backticks used
+     * to leave you with code as flat prose — no Run, no Copy, no Editor,
+     * nothing to act on. That was the whole complaint.
+     */
+    function parseSegments(text) {
+      var fenced = [], re = /```(\w*)\n?([\s\S]*?)```/g, last = 0, m;
+      while ((m = re.exec(text))) {
+        if (m.index > last) fenced.push({ type: "text", text: text.slice(last, m.index) });
+        fenced.push({ type: "code", lang: m[1] || "", code: m[2].replace(/\n$/, "") });
+        last = re.lastIndex;
+      }
+      if (last < text.length) fenced.push({ type: "text", text: text.slice(last) });
+      if (!fenced.length) fenced = [{ type: "text", text: text }];
+
+      var segs = [];
+      fenced.forEach(function (seg) {
+        if (seg.type === "code") { segs.push(seg); return; }
+        // Paragraphs are the unit: a blank line separates prose from a
+        // pasted snippet far more reliably than any per-line heuristic.
+        seg.text.split(/\n{2,}/).forEach(function (block) {
+          if (!block.trim()) return;
+          if (looksLikeCode(block)) {
+            segs.push({ type: "code", lang: guessLanguage(block), code: block.replace(/^\n+|\n+$/g, "") });
+          } else if (segs.length && segs[segs.length - 1].type === "text") {
+            segs[segs.length - 1].text += "\n\n" + block;
+          } else {
+            segs.push({ type: "text", text: block });
+          }
+        });
+      });
+      return segs.length ? segs : [{ type: "text", text: text }];
+    }
+
+    // Which languages this machine can run, fetched once. Until it arrives
+    // no Run buttons appear, which is the correct failure direction.
+    var RUNTIMES = {};
+    fetch("/api/runtimes").then(function (r) { return r.json(); }).then(function (data) {
+      RUNTIMES = data.runtimes || {};
+    }).catch(function () { /* no runtimes known -> no Run buttons */ });
+
+    function runtimeFor(lang) {
+      var key = (lang || "").toLowerCase();
+      var direct = RUNTIMES[key];
+      if (direct) return direct.available ? direct : null;
+      for (var name in RUNTIMES) {
+        var rt = RUNTIMES[name];
+        if (rt.aliases && rt.aliases.indexOf(key) >= 0) return rt.available ? rt : null;
+      }
+      return null;
+    }
+
+    function makeRunButton(lang, code, blockEl) {
+      var rt = runtimeFor(lang);
+      if (!rt) return null;
+
+      var btn = document.createElement("button");
+      btn.textContent = "▶ Run";
+      btn.title = "Run with " + rt.label + (rt.version ? " (" + rt.version + ")" : "");
+      btn.addEventListener("click", function () {
+        btn.disabled = true; btn.textContent = "running…";
+        fetch("/api/run", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ language: lang, code: code }),
+        }).then(function (r) { return r.json(); }).then(function (res) {
+          showRunOutput(blockEl, res);
+        }).catch(function (e) {
+          showRunOutput(blockEl, { ok: false, error: e.message, output: "", command: "", exit: -1 });
+        }).finally(function () { btn.disabled = false; btn.textContent = "▶ Run"; });
+      });
+      return btn;
+    }
+
+    function showRunOutput(blockEl, res) {
+      var existing = blockEl.parentNode.querySelector(".run-output");
+      if (existing) existing.parentNode.removeChild(existing);
+
+      var box = document.createElement("div");
+      box.className = "run-output" + (res.ok ? " ok" : " bad");
+      var head = document.createElement("div");
+      head.className = "run-head";
+      var status = res.error ? res.error
+        : (res.timed_out ? "timed out — process tree killed"
+          : (res.ok ? "exit 0" : "exit " + res.exit));
+      head.textContent = (res.ok ? "▾ output · " : "▾ failed · ") + status;
+      // The exact command is shown because this executed model-written code.
+      head.title = res.command || "";
+      var pre = document.createElement("pre");
+      pre.className = "run-body";
+      pre.textContent = (res.output || "").trim() || "(no output)";
+      head.addEventListener("click", function () {
+        var hidden = pre.style.display === "none";
+        pre.style.display = hidden ? "" : "none";
+        head.textContent = (hidden ? "▾ " : "▸ ") + head.textContent.slice(2);
+      });
+      box.appendChild(head); box.appendChild(pre);
+      if (res.command) {
+        var cmd = document.createElement("div");
+        cmd.className = "run-cmd";
+        cmd.textContent = res.command;
+        box.appendChild(cmd);
+      }
+      blockEl.parentNode.appendChild(box);
+    }
+
+    function makeCodeBlock(lang, code, messageIndex) {
+      var codeWrap = document.createElement("div");
+      codeWrap.className = "chat-code-wrap";
+      codeWrap.dataset.messageIndex = String(messageIndex);
+      codeWrap.dataset.pinned = "false";
+
+      var full = document.createElement("div");
+      full.className = "code-block";
+      var bar = document.createElement("div");
+      bar.className = "code-block-bar";
+      var langSpan = document.createElement("span");
+      langSpan.className = "lang"; langSpan.textContent = lang || "text";
+      var spacer = document.createElement("span"); spacer.className = "spacer";
+      var popBtn = document.createElement("button"); popBtn.textContent = "⤢ Pop out";
+      var copyBtn = document.createElement("button"); copyBtn.textContent = "Copy";
+
+      // → Editor: writes the block to the project's scratch directory and
+      // opens it as a real file, so it can be saved, edited and run rather
+      // than living only inside a chat bubble.
+      var editorBtn = document.createElement("button");
+      editorBtn.textContent = "→ Editor";
+      editorBtn.title = "Open this block as a file in the editor";
+      editorBtn.addEventListener("click", function () {
+        editorBtn.disabled = true;
+        fetch("/api/snippet", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ language: lang || "text", code: code }),
+        }).then(function (r) { return r.json(); }).then(function (data) {
+          if (window.__editor && window.__editor.openFile) window.__editor.openFile(data.path);
+          editorBtn.textContent = "→ Editor ✓";
+          setTimeout(function () { editorBtn.textContent = "→ Editor"; }, 1600);
+        }).catch(function (e) {
+          editorBtn.textContent = "failed: " + e.message;
+        }).finally(function () { editorBtn.disabled = false; });
+      });
+
+      bar.appendChild(langSpan); bar.appendChild(spacer);
+      // ▶ Run is added only for a language this machine can actually run —
+      // see RUNTIMES below. A button that appears and then fails is worse
+      // than no button.
+      var runBtn = makeRunButton(lang, code, full);
+      if (runBtn) bar.appendChild(runBtn);
+      bar.appendChild(editorBtn); bar.appendChild(copyBtn); bar.appendChild(popBtn);
+      var cmHost = document.createElement("div");
+      full.appendChild(bar); full.appendChild(cmHost);
+
+      var collapsed = document.createElement("div");
+      collapsed.className = "code-collapsed";
+      var lineCount = code.split("\n").length;
+      collapsed.textContent = "▸ " + (lang || "code") + " block (" + lineCount + " line" + (lineCount === 1 ? "" : "s") + ") — click to expand";
+      collapsed.style.display = "none";
+
+      codeWrap.appendChild(full);
+      codeWrap.appendChild(collapsed);
+
+      var cm = window.CodeMirror(cmHost, {
+        value: code, mode: modeForLang(lang) || "text/plain", theme: "dracula",
+        readOnly: true, lineNumbers: true, viewportMargin: Infinity,
+      });
+
+      copyBtn.addEventListener("click", function () {
+        navigator.clipboard.writeText(code).then(function () {
+          copyBtn.textContent = "Copied!"; setTimeout(function () { copyBtn.textContent = "Copy"; }, 1200);
+        }).catch(function () {});
+      });
+      popBtn.addEventListener("click", function () {
+        popoutCounter++;
+        var id = "popout-" + popoutCounter;
+        var host = document.createElement("div");
+        host.style.height = "100%";
+        var popCm = window.CodeMirror(host, {
+          value: code, mode: modeForLang(lang) || "text/plain", theme: "dracula",
+          lineNumbers: true, matchBrackets: true,
+        });
+        WM.createFloatingOnly(id, (lang || "code") + " snippet", host, { x: 160 + popoutCounter * 20, y: 100 + popoutCounter * 20, w: 560, h: 380 });
+        setTimeout(function () { popCm.refresh(); }, 30);
+      });
+      collapsed.addEventListener("click", function () {
+        codeWrap.dataset.pinned = "true";
+        collapsed.style.display = "none"; full.style.display = "";
+        setTimeout(function () { cm.refresh(); }, 10);
+      });
+
+      return codeWrap;
+    }
+
+    function compactOldCodeBlocks() {
+      var wraps = messagesEl.querySelectorAll(".chat-code-wrap");
+      wraps.forEach(function (w) {
+        var idx = parseInt(w.dataset.messageIndex, 10);
+        var isOld = idx <= messageCount - COMPACT_KEEP_RECENT;
+        if (isOld && w.dataset.pinned !== "true") {
+          w.querySelector(".code-block").style.display = "none";
+          w.querySelector(".code-collapsed").style.display = "block";
+        }
+      });
+    }
+
+    function dismissWelcome() {
+      if (welcome && welcome.parentNode) welcome.parentNode.removeChild(welcome);
+    }
+
+    function appendMessage(role, text) {
+      dismissWelcome();
+      messageCount++;
+      var el = document.createElement("div");
+      el.className = "chat-msg chat-" + role;
+      if (role === "assistant") {
+        parseSegments(text).forEach(function (seg) {
+          if (seg.type === "text") {
+            if (seg.text.trim()) {
+              var t = document.createElement("div");
+              t.textContent = seg.text;
+              el.appendChild(t);
+            }
+          } else {
+            el.appendChild(makeCodeBlock(seg.lang, seg.code, messageCount));
+          }
+        });
+      } else {
+        el.textContent = text;
+      }
+      messagesEl.appendChild(el);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      compactOldCodeBlocks();
+    }
+
+    function appendPlain(role, text) {
+      dismissWelcome();
+      var el = document.createElement("div");
+      el.className = "chat-msg chat-" + role;
+      el.textContent = text;
+      messagesEl.appendChild(el);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    var ws = null;
+    function connect() {
+      var proto = location.protocol === "https:" ? "wss:" : "ws:";
+      ws = new WebSocket(proto + "//" + location.host + "/ws/chat");
+      ws.onmessage = function (ev) {
+        var data;
+        try { data = JSON.parse(ev.data); } catch (e) { return; }
+        if (data.type === "error") appendPlain("system", data.message);
+        else if (data.type === "assistant_text") appendMessage("assistant", data.text);
+        else if (data.type === "tool_call_start") appendPlain("tool", "→ " + data.name + "(" + JSON.stringify(data.input) + ")");
+        else if (data.type === "tool_call_result") appendPlain("tool", "← " + String(data.result).slice(0, 300));
+      };
+      ws.onclose = function () { appendPlain("system", "connection closed — reconnecting…"); setTimeout(connect, 2000); };
+    }
+    connect();
+
+    function send() {
+      var input = document.getElementById("chatInput");
+      var text = input.value.trim();
+      if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+      appendMessage("user", text);
+      input.value = "";
+      ws.send(text);
+    }
+    wrap.querySelector("#chatSend").addEventListener("click", send);
+    wrap.querySelector("#chatInput").addEventListener("keydown", function (ev) { if (ev.key === "Enter") send(); });
+
+    return { input: wrap.querySelector("#chatInput") };
+  }
+
+  // =====================================================================
+  // Editor — real CodeMirror editing: line numbers, syntax highlighting
+  // by extension, bracket matching, Ctrl-F find, multi-file tabs (one
+  // CodeMirror instance, a Doc per open file so undo history survives
+  // switching tabs), save wired to /api/file.
+  // =====================================================================
+  var activeCM = null; // last-focused CodeMirror instance anywhere in the app — Edit menu targets this
+
+  function buildEditorView(container) {
+    var wrap = document.createElement("div");
+    wrap.className = "editor-view";
+    var tree = document.createElement("div");
+    tree.className = "file-tree";
+    var main = document.createElement("div");
+    main.className = "editor-main";
+    var tabs = document.createElement("div");
+    tabs.className = "editor-tabs";
+    var bar = document.createElement("div");
+    bar.className = "editor-bar";
+    bar.innerHTML = "<div class='editor-path' id='edPath'>no file open</div><span class='editor-status' id='edStatus'></span><button class='editor-btn' id='edSave'>Save</button>";
+    var cmHostWrap = document.createElement("div");
+    cmHostWrap.className = "editor-cm-host";
+    var empty = document.createElement("div");
+    empty.className = "editor-empty";
+    empty.textContent = "Select a file from the tree on the left.";
+    cmHostWrap.appendChild(empty);
+    main.appendChild(tabs); main.appendChild(bar); main.appendChild(cmHostWrap);
+    wrap.appendChild(tree); wrap.appendChild(main);
+    container.appendChild(wrap);
+
+    var cm = null;
+    var openFiles = {}; // path -> { doc, dirty }
+    var currentPath = null;
+    var tabOrder = [];
+
+    function ensureCM() {
+      if (cm) return cm;
+      empty.remove();
+      cm = window.CodeMirror(cmHostWrap, {
+        value: "", theme: "dracula", lineNumbers: true, matchBrackets: true,
+        extraKeys: { "Ctrl-F": "findPersistent", "Cmd-F": "findPersistent" },
+      });
+      cm.on("focus", function () { activeCM = cm; });
+      cm.on("change", function () {
+        if (currentPath && openFiles[currentPath]) {
+          openFiles[currentPath].dirty = true;
+          renderTabs();
+        }
+      });
+      return cm;
+    }
+
+    function renderTabs() {
+      tabs.innerHTML = "";
+      tabOrder.forEach(function (path) {
+        var t = document.createElement("div");
+        t.className = "editor-tab" + (path === currentPath ? " active" : "");
+        var name = path.split("/").pop();
+        t.innerHTML = "<span>" + escapeHtml(name) + (openFiles[path].dirty ? " ●" : "") + "</span><span class='x'>✕</span>";
+        t.addEventListener("click", function (ev) {
+          if (ev.target.classList.contains("x")) { closeTab(path); return; }
+          switchTo(path);
+        });
+        tabs.appendChild(t);
+      });
+    }
+
+    function switchTo(path) {
+      currentPath = path;
+      ensureCM().swapDoc(openFiles[path].doc);
+      document.getElementById("edPath").textContent = path;
+      document.getElementById("edStatus").textContent = "";
+      renderTabs();
+      tree.querySelectorAll(".file-row").forEach(function (r) { r.classList.toggle("selected", r.dataset.path === path); });
+      setTimeout(function () { cm.refresh(); cm.focus(); }, 10);
+    }
+
+    function closeTab(path) {
+      delete openFiles[path];
+      tabOrder = tabOrder.filter(function (p) { return p !== path; });
+      if (currentPath === path) {
+        currentPath = null;
+        if (tabOrder.length) switchTo(tabOrder[tabOrder.length - 1]);
+        else { document.getElementById("edPath").textContent = "no file open"; if (cm) cm.swapDoc(new CodeMirror.Doc("", "text/plain")); }
+      }
+      renderTabs();
+    }
+
+    function openFile(path, forcedMode) {
+      // `forcedMode` backs "Open as…" — reopening a file under a different
+      // syntax mode. Without it that menu item would silently do nothing.
+      if (openFiles[path] && !forcedMode) { switchTo(path); return; }
+      fetch("/api/file?path=" + encodeURIComponent(path)).then(function (r) {
+        if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || ("HTTP " + r.status)); });
+        return r.json();
+      }).then(function (data) {
+        var mode = (forcedMode ? (EXT_MODE[forcedMode.replace(/^\./, "")] || LANG_MODE[forcedMode] || forcedMode) : null)
+                   || modeForFilename(path) || "text/plain";
+        openFiles[path] = { doc: new CodeMirror.Doc(data.content, mode), dirty: false };
+        tabOrder.push(path);
+        switchTo(path);
+      }).catch(function (e) {
+        document.getElementById("edStatus").textContent = "error: " + e.message;
+      });
+    }
+
+    // ---- ask(): a real input dialog ------------------------------------
+    // window.prompt is unreliable inside WebView2 — a rename that silently
+    // does nothing is worse than no rename at all. Returns a Promise of the
+    // typed value, or null if cancelled.
+    function ask(opts) {
+      return new Promise(function (resolve) {
+        var root = document.getElementById("askRoot");
+        var box = document.getElementById("askBox");
+        box.innerHTML =
+          "<h4>" + escapeHtml(opts.title) + "</h4>" +
+          (opts.message ? "<p>" + escapeHtml(opts.message) + "</p>" : "") +
+          (opts.input === false ? "" : "<input type='text' id='askInput'>") +
+          "<div class='ask-row'>" +
+          "<button class='ask-cancel' id='askCancel'>Cancel</button>" +
+          "<button class='ask-ok" + (opts.danger ? " danger" : "") + "' id='askOk'>" +
+          escapeHtml(opts.okLabel || "OK") + "</button></div>";
+        root.classList.add("open");
+
+        var input = document.getElementById("askInput");
+        if (input) {
+          input.value = opts.value || "";
+          input.focus();
+          // Select the stem, not the extension — renaming report.md to
+          // summary.md shouldn't mean retyping ".md".
+          var dot = input.value.lastIndexOf(".");
+          if (dot > 0) input.setSelectionRange(0, dot); else input.select();
+        }
+
+        function done(value) {
+          root.classList.remove("open");
+          document.removeEventListener("keydown", onKey, true);
+          resolve(value);
+        }
+        function onKey(ev) {
+          if (ev.key === "Escape") { ev.stopPropagation(); done(null); }
+          else if (ev.key === "Enter" && input) { ev.stopPropagation(); done(input.value.trim() || null); }
+        }
+        document.addEventListener("keydown", onKey, true);
+        document.getElementById("askCancel").addEventListener("click", function () { done(null); });
+        document.getElementById("askOk").addEventListener("click", function () {
+          done(input ? (input.value.trim() || null) : true);
+        });
+      });
+    }
+
+    // ---- filesystem calls ------------------------------------------------
+    function fsCall(url, method, body) {
+      return fetch(url, {
+        method: method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).then(function (r) {
+        return r.json().then(function (data) { return { ok: r.ok, status: r.status, data: data }; });
+      });
+    }
+
+    function fsError(result) {
+      return (result.data && result.data.detail) || ("HTTP " + result.status);
+    }
+
+    /**
+     * Delete, letting the *server* decide what is protected.
+     *
+     * The client deliberately does not know which folders are top-level or
+     * how many items a tree holds. It attempts the delete; a 409 comes back
+     * carrying the reason, which becomes the confirmation text; if the user
+     * agrees it retries with the flags. Reimplementing the rules here would
+     * mean two sources of truth that drift apart.
+     */
+    function deletePath(path, name) {
+      return fsCall("/api/fs", "DELETE", { path: path }).then(function (res) {
+        if (res.ok) return true;
+        if (res.status !== 409) { alert("Could not delete: " + fsError(res)); return false; }
+        return ask({
+          title: "Delete " + name + "?",
+          message: fsError(res) + "\n\nThis cannot be undone.",
+          input: false, danger: true, okLabel: "Delete",
+        }).then(function (confirmed) {
+          if (!confirmed) return false;
+          return fsCall("/api/fs", "DELETE",
+                        { path: path, recursive: true, allow_top_level: true })
+            .then(function (retry) {
+              if (!retry.ok) { alert("Could not delete: " + fsError(retry)); return false; }
+              return true;
+            });
+        });
+      });
+    }
+
+    var currentDir = "";
+    function loadFileTree(path) {
+      currentDir = path || "";
+      fetch("/api/files?path=" + encodeURIComponent(path || "")).then(function (r) {
+        if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || ("HTTP " + r.status)); });
+        return r.json();
+      }).then(renderFileTree).catch(function (e) {
+        tree.innerHTML = "<div style='color:#f87171;padding:6px'>" + escapeHtml(e.message) + "</div>";
+      });
+    }
+    // ---- right-click menu ------------------------------------------------
+    var ctxMenu = document.getElementById("ctxMenu");
+
+    function closeCtx() { ctxMenu.classList.remove("open"); }
+    document.addEventListener("click", closeCtx);
+    document.addEventListener("keydown", function (ev) { if (ev.key === "Escape") closeCtx(); });
+    window.addEventListener("blur", closeCtx);
+
+    function showCtx(x, y, items) {
+      ctxMenu.innerHTML = "";
+      items.forEach(function (item) {
+        if (item === "-") {
+          var sep = document.createElement("div");
+          sep.className = "ctx-sep";
+          ctxMenu.appendChild(sep);
+          return;
+        }
+        var el = document.createElement("div");
+        el.className = "ctx-item" + (item.danger ? " danger" : "") + (item.disabled ? " disabled" : "");
+        el.innerHTML = escapeHtml(item.label) + (item.key ? "<span class='k'>" + escapeHtml(item.key) + "</span>" : "");
+        el.addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          closeCtx();
+          if (!item.disabled && item.run) item.run();
+        });
+        ctxMenu.appendChild(el);
+      });
+      ctxMenu.classList.add("open");
+      // Flip near the edges so the menu is never cut off by the window.
+      var r = ctxMenu.getBoundingClientRect();
+      ctxMenu.style.left = Math.min(x, window.innerWidth - r.width - 8) + "px";
+      ctxMenu.style.top = Math.min(y, window.innerHeight - r.height - 8) + "px";
+    }
+
+    function parentOf(path) { return (path || "").split("/").slice(0, -1).join("/"); }
+    function baseName(path) { return (path || "").split("/").pop(); }
+
+    function refreshTree() { loadFileTree(currentDir); }
+
+    function newFileHere(dir) {
+      ask({ title: "New file", message: "In: " + (dir || "project root"), value: "untitled.txt" })
+        .then(function (name) {
+          if (!name) return;
+          fsCall("/api/fs/new-file", "POST", { path: dir, name: name }).then(function (res) {
+            if (!res.ok) return alert("Could not create: " + fsError(res));
+            refreshTree();
+            openFile(res.data.path);
+          });
+        });
+    }
+
+    function newFolderHere(dir) {
+      ask({ title: "New folder", message: "In: " + (dir || "project root"), value: "new-folder" })
+        .then(function (name) {
+          if (!name) return;
+          fsCall("/api/fs/mkdir", "POST", { path: dir, name: name }).then(function (res) {
+            if (!res.ok) return alert("Could not create: " + fsError(res));
+            refreshTree();
+          });
+        });
+    }
+
+    function fileMenuItems(entry) {
+      var dir = entry && entry.is_dir ? entry.path : currentDir;
+      var items = [];
+
+      if (entry) {
+        items.push({ label: entry.is_dir ? "Open folder" : "Open",
+                     run: function () { entry.is_dir ? loadFileTree(entry.path) : openFile(entry.path); } });
+        if (!entry.is_dir) {
+          items.push({ label: "Open as…", run: function () {
+            ask({ title: "Open as", message: "Syntax mode for " + baseName(entry.path),
+                  value: (entry.path.split(".").pop() || "text") }).then(function (mode) {
+              if (mode) openFile(entry.path, mode);
+            });
+          }});
+        }
+        items.push("-");
+      }
+
+      items.push({ label: "New File", run: function () { newFileHere(dir); } });
+      items.push({ label: "New Folder", run: function () { newFolderHere(dir); } });
+      items.push({ label: "New Project…", run: function () { openModal("newproject"); } });
+
+      if (entry) {
+        items.push("-");
+        items.push({ label: "Rename…", run: function () {
+          ask({ title: "Rename", value: baseName(entry.path) }).then(function (name) {
+            if (!name || name === baseName(entry.path)) return;
+            var dest = parentOf(entry.path);
+            fsCall("/api/fs/rename", "POST",
+                   { path: entry.path, dest: (dest ? dest + "/" : "") + name }).then(function (res) {
+              if (!res.ok) return alert("Could not rename: " + fsError(res));
+              refreshTree();
+            });
+          });
+        }});
+        items.push({ label: "Move to…", run: function () {
+          ask({ title: "Move", message: "Destination path, relative to the project root",
+                value: entry.path }).then(function (dest) {
+            if (!dest || dest === entry.path) return;
+            fsCall("/api/fs/rename", "POST", { path: entry.path, dest: dest }).then(function (res) {
+              if (!res.ok) return alert("Could not move: " + fsError(res));
+              refreshTree();
+            });
+          });
+        }});
+        items.push({ label: "Copy", run: function () {
+          var dot = entry.is_dir ? -1 : entry.path.lastIndexOf(".");
+          var dest = dot > 0 ? entry.path.slice(0, dot) + "-copy" + entry.path.slice(dot)
+                             : entry.path + "-copy";
+          fsCall("/api/fs/copy", "POST", { path: entry.path, dest: dest }).then(function (res) {
+            if (!res.ok) return alert("Could not copy: " + fsError(res));
+            refreshTree();
+          });
+        }});
+        items.push({ label: "Copy as…", run: function () {
+          ask({ title: "Copy as", message: "New path, relative to the project root",
+                value: entry.path }).then(function (dest) {
+            if (!dest || dest === entry.path) return;
+            fsCall("/api/fs/copy", "POST", { path: entry.path, dest: dest }).then(function (res) {
+              if (!res.ok) return alert("Could not copy: " + fsError(res));
+              refreshTree();
+            });
+          });
+        }});
+
+        if (!entry.is_dir) {
+          items.push("-");
+          items.push({ label: "Save", disabled: !openFiles[entry.path], key: "Ctrl+S",
+                       run: function () { document.getElementById("edSave").click(); } });
+          items.push({ label: "Save As…", run: function () {
+            ask({ title: "Save as", message: "New path, relative to the project root",
+                  value: entry.path }).then(function (dest) {
+              if (!dest) return;
+              var content = openFiles[entry.path] ? openFiles[entry.path].doc.getValue() : null;
+              var done = content === null
+                ? fsCall("/api/fs/copy", "POST", { path: entry.path, dest: dest })
+                : fsCall("/api/file", "PUT", { path: dest, content: content });
+              done.then(function (res) {
+                if (!res.ok) return alert("Could not save: " + fsError(res));
+                refreshTree();
+                openFile(dest);
+              });
+            });
+          }});
+        }
+
+        items.push("-");
+        items.push({ label: entry.is_dir ? "Delete folder" : "Delete", danger: true, key: "Del",
+                     run: function () {
+          deletePath(entry.path, baseName(entry.path)).then(function (removed) {
+            if (!removed) return;
+            if (openFiles[entry.path]) closeTab(entry.path);
+            refreshTree();
+          });
+        }});
+      }
+      return items;
+    }
+
+    function renderFileTree(data) {
+      tree.innerHTML = "";
+      if (data.path) {
+        var parent = data.path.split("/").slice(0, -1).join("/");
+        var up = document.createElement("div");
+        up.className = "file-row";
+        up.textContent = ".. (" + (parent || "root") + ")";
+        up.addEventListener("click", function () { loadFileTree(parent); });
+        tree.appendChild(up);
+      }
+      data.entries.forEach(function (e) {
+        var row = document.createElement("div");
+        row.className = "file-row";
+        row.dataset.path = e.path;
+        row.textContent = (e.is_dir ? "📁 " : "📄 ") + e.name;
+        row.addEventListener("click", function () { if (e.is_dir) loadFileTree(e.path); else openFile(e.path); });
+        row.addEventListener("contextmenu", function (ev) {
+          ev.preventDefault(); ev.stopPropagation();
+          tree.querySelectorAll(".file-row").forEach(function (r) { r.classList.remove("selected"); });
+          row.classList.add("selected");
+          showCtx(ev.clientX, ev.clientY, fileMenuItems(e));
+        });
+        tree.appendChild(row);
+      });
+    }
+
+    bar.querySelector("#edSave").addEventListener("click", function () {
+      if (!currentPath || !openFiles[currentPath]) return;
+      var content = openFiles[currentPath].doc.getValue();
+      var status = document.getElementById("edStatus");
+      status.textContent = "saving…";
+      fetch("/api/file", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: currentPath, content: content }),
+      }).then(function (r) {
+        if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || ("HTTP " + r.status)); });
+        return r.json();
+      }).then(function (data) {
+        openFiles[currentPath].dirty = false;
+        renderTabs();
+        status.textContent = "saved (" + data.bytes + " bytes)";
+      }).catch(function (e) {
+        status.textContent = "error: " + e.message;
+      });
+    });
+
+    tree.addEventListener("contextmenu", function (ev) {
+      if (ev.target.closest(".file-row")) return;   // rows handle their own
+      ev.preventDefault();
+      showCtx(ev.clientX, ev.clientY, fileMenuItems(null));
+    });
+
+    loadFileTree("");
+
+    return {
+      refresh: function () { if (cm) cm.refresh(); },
+      reloadTree: function () { loadFileTree(""); },
+      // Exposed so a chat code block can hand a file straight to the editor.
+      openFile: function (path) { loadFileTree(""); openFile(path); },
+    };
+  }
+
+  // =====================================================================
+  // Modals — Settings / Help / About
+  // =====================================================================
+  var MODALS = {
+    help: function () {
+      return "<h3>Keyboard &amp; Usage</h3><div class='body'>" +
+        "<dl>" +
+        "<dt>Neural View</dt><dd>Drag to rotate the camera around the brain · Shift/right-drag to pan · Scroll to zoom · Click a node to inspect it · Drag a node to pin it in place.</dd>" +
+        "<dt>Panels</dt><dd>Click the ⤢ button on a panel's title bar to pop it out into a floating, resizable window; click ⧉ to dock it back. Drag a floating panel by its title bar; resize from the bottom-right corner. Drag the divider between docked panels to resize them.</dd>" +
+        "<dt>Chat code blocks</dt><dd>Click ⤢ Pop out on a code block to keep it open as its own floating panel. Code blocks in older messages auto-collapse — click to re-expand.</dd>" +
+        "<dt>Editor</dt><dd>Ctrl-F to find in the open file. Multiple files open as tabs.</dd>" +
+        "<dt>Layout</dt><dd>Your panel arrangement is saved automatically. File → Reset Window Layout restores the default.</dd>" +
+        "</dl></div><div class='close-row'><button data-close>Close</button></div>";
+    },
+    about: function () {
+      return "<h3>About DariusAI</h3><div class='body'>" +
+        "A self-learning polyglot coding agent with a persistent, queryable skill graph. " +
+        "When it can't solve something with its existing tools or knowledge, it researches the web, " +
+        "cites at least 5 sources, and files what it learned as a new node in the brain." +
+        "<dl><dt>Version</dt><dd>" + escapeHtml(APP_VERSION.display || "unknown") +
+        (APP_VERSION.version ? " <span style='color:#5b6289'>(" + escapeHtml(APP_VERSION.version) + ")</span>" : "") +
+        "</dd></dl></div>" +
+        "<div class='close-row'><button data-close>Close</button></div>";
+    },
+  };
+  var MODELESS = { settings: true, newproject: true }; // stays open while you work in the rest of the app
+  var settingsPos = null;            // remembered between opens, so it reopens where you left it
+
+  function openModal(name) {
+    var root = document.getElementById("modalRoot");
+    var box = document.getElementById("modalBox");
+    box.classList.remove("wide");
+    root.classList.toggle("modeless", !!MODELESS[name]);
+    if (name === "settings") {
+      renderSettingsModal(box);
+    } else if (name === "newproject") {
+      renderNewProjectModal(box);
+    } else {
+      box.removeAttribute("style");
+      box.innerHTML = MODALS[name]();
+      box.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
+    }
+    root.classList.add("open");
+    if (MODELESS[name]) placeModelessBox(box); // after .open, so the box has a measurable size
+  }
+  function closeModal() { document.getElementById("modalRoot").classList.remove("open"); }
+  document.getElementById("modalRoot").addEventListener("click", function (ev) {
+    // Click-outside-to-dismiss only applies to the true modals — for the
+    // modeless panel a stray click in the app must never throw away a
+    // half-filled provider form. Close it with ✕/Close or Escape.
+    if (ev.target.id === "modalRoot" && !ev.currentTarget.classList.contains("modeless")) closeModal();
+  });
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key !== "Escape") return;
+    var root = document.getElementById("modalRoot");
+    if (root.classList.contains("open")) { closeModal(); ev.stopPropagation(); }
+  });
+  window.__openSettingsPanel = function () { openModal("settings"); };
+
+  // ---- modeless panel placement + dragging -----------------------------
+  function placeModelessBox(box) {
+    var width = 560; // .modal-box.wide
+    applyModelessPos(box, settingsPos || { x: (window.innerWidth - width) / 2, y: 70 });
+  }
+  function applyModelessPos(box, pos) {
+    var width = box.offsetWidth || 560;
+    // Always leave ~120px of the panel (and its heading) on screen to grab.
+    settingsPos = {
+      x: Math.min(Math.max(pos.x, 120 - width), window.innerWidth - 120),
+      y: Math.min(Math.max(pos.y, 0), window.innerHeight - 40),
+    };
+    box.style.left = settingsPos.x + "px";
+    box.style.top = settingsPos.y + "px";
+  }
+  (function enableModelessDrag() {
+    var root = document.getElementById("modalRoot");
+    var box = document.getElementById("modalBox");
+    var dragging = false, from = [0, 0], start = [0, 0];
+    box.addEventListener("mousedown", function (ev) {
+      if (!root.classList.contains("modeless")) return;
+      if (!ev.target.closest("h3")) return; // the panel's heading is its title bar
+      dragging = true;
+      from = [ev.clientX, ev.clientY];
+      start = [settingsPos.x, settingsPos.y];
+      ev.preventDefault(); // no text selection while dragging
+    });
+    window.addEventListener("mousemove", function (ev) {
+      if (!dragging) return;
+      applyModelessPos(box, { x: start[0] + ev.clientX - from[0], y: start[1] + ev.clientY - from[1] });
+    });
+    window.addEventListener("mouseup", function () { dragging = false; });
+    window.addEventListener("resize", function () {
+      if (settingsPos && root.classList.contains("open")) applyModelessPos(box, settingsPos);
+    });
+  })();
+
+  // =====================================================================
+  // New Project — name, type picker with typeahead, live setup console
+  // =====================================================================
+  function renderNewProjectModal(box) {
+    box.classList.add("wide");
+    box.innerHTML =
+      "<h3>Create New Project<span class='drag-hint'>drag to move · stays open while you work</span></h3>" +
+      "<div class='body' id='npBody'>Loading project types…</div>" +
+      "<div class='close-row'><button data-close>Close</button></div>";
+
+    // openModal only wires [data-close] on the generic branch; this one
+    // renders itself, so it has to wire its own — without this the form had
+    // no way out at all.
+    box.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
+
+    fetch("/api/workbench").then(function (r) { return r.json(); }).then(function (info) {
+      renderNewProjectBody(document.getElementById("npBody"), info);
+    }).catch(function (e) {
+      document.getElementById("npBody").innerHTML =
+        "<div class='settings-err'>" + escapeHtml(e.message) + "</div>";
+    });
+  }
+
+  function renderNewProjectBody(body, info) {
+    if (!body) return;
+    var types = info.types || [];
+    var selected = null;
+
+    body.innerHTML =
+      "<div class='settings-form'>" +
+      "<label>Name your Project</label>" +
+      "<input type='text' id='npName' placeholder='my-first-project' autocomplete='off'>" +
+      "<label>Type of project <span style='color:#5b6289'>— type to jump: h → HTML, HTML5, HTMX</span></label>" +
+      "<div class='np-combo'>" +
+      "<input type='text' id='npTypeSearch' placeholder='search or pick a type…' autocomplete='off'>" +
+      "<div class='np-list' id='npList'></div>" +
+      "</div>" +
+      "<div class='np-meta' id='npMeta'></div>" +
+      "<div class='actions' style='margin-top:12px;display:flex;gap:8px;align-items:center'>" +
+      "<button class='btn primary' id='npCreate' style='background:#3b5bdb;border:none;color:#fff;border-radius:6px;padding:7px 16px;font-size:12.5px;cursor:pointer'>Create Project</button>" +
+      "<span id='npStatus' style='font-size:11.5px;color:#8b93b8'></span>" +
+      "</div>" +
+      "<label style='margin-top:14px'>Setup console</label>" +
+      "<div class='np-console' id='npConsole'><div class='np-line dim'>" +
+      escapeHtml("workbench: " + info.root) + "</div></div>" +
+      "</div>";
+
+    var listEl = document.getElementById("npList");
+    var searchEl = document.getElementById("npTypeSearch");
+    var metaEl = document.getElementById("npMeta");
+
+    // Prefix matches first — typing "h" must reach the HTML family before
+    // anything that merely contains an h.
+    function rank(query) {
+      var q = (query || "").trim().toLowerCase();
+      if (!q) return types.slice();
+      var starts = [], contains = [];
+      types.forEach(function (t) {
+        var hay = [t.id, t.label].concat(t.keywords || []).map(function (x) { return String(x).toLowerCase(); });
+        if (hay.some(function (h) { return h.indexOf(q) === 0; })) starts.push(t);
+        else if (hay.some(function (h) { return h.indexOf(q) >= 0; })) contains.push(t);
+      });
+      return starts.concat(contains);
+    }
+
+    function describe(t) {
+      if (!t) return "";
+      var bits = [];
+      if (t.needs_env) bits.push("creates its own environment");
+      if (t.sqlite) bits.push("SQLite database");
+      if (t.steps && t.steps.length) bits.push(t.steps.length + " setup step" + (t.steps.length === 1 ? "" : "s"));
+      if (!t.available) bits.push("⚠ " + (t.runtime || "runtime") + " not installed on this machine");
+      return escapeHtml(t.description) + (bits.length ? " <span style='color:#6c7399'>· " + bits.join(" · ") + "</span>" : "");
+    }
+
+    function draw(query) {
+      var matches = rank(query);
+      listEl.innerHTML = "";
+      matches.forEach(function (t, i) {
+        var row = document.createElement("div");
+        row.className = "np-item" + (t.available ? "" : " unavailable");
+        row.dataset.id = t.id;
+        row.innerHTML = "<span class='np-label'>" + escapeHtml(t.label) + "</span>" +
+          (t.available ? "" : "<span class='np-warn'>missing</span>");
+        row.addEventListener("click", function () { choose(t.id); });
+        listEl.appendChild(row);
+      });
+      // Auto-select the best match so typing "htmx" then Create just works.
+      if (matches.length) choose(matches[0].id, true);
+      else { selected = null; metaEl.textContent = "no matching project type"; }
+    }
+
+    function choose(id, keepFocus) {
+      selected = types.filter(function (t) { return t.id === id; })[0] || null;
+      Array.prototype.forEach.call(listEl.children, function (el) {
+        el.classList.toggle("selected", el.dataset.id === id);
+      });
+      var sel = listEl.querySelector(".np-item.selected");
+      if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: "nearest" });
+      metaEl.innerHTML = describe(selected);
+      if (!keepFocus) searchEl.focus();
+    }
+
+    searchEl.addEventListener("input", function () { draw(searchEl.value); });
+    searchEl.addEventListener("keydown", function (ev) {
+      var rows = Array.prototype.slice.call(listEl.children);
+      var idx = rows.findIndex(function (r) { return r.classList.contains("selected"); });
+      if (ev.key === "ArrowDown" && idx < rows.length - 1) { choose(rows[idx + 1].dataset.id, true); ev.preventDefault(); }
+      else if (ev.key === "ArrowUp" && idx > 0) { choose(rows[idx - 1].dataset.id, true); ev.preventDefault(); }
+      else if (ev.key === "Enter") { ev.preventDefault(); document.getElementById("npCreate").click(); }
+    });
+    draw("");
+
+    document.getElementById("npCreate").addEventListener("click", function () {
+      createProject(selected, info);
+    });
+    document.getElementById("npName").focus();
+  }
+
+  function createProject(selected, info) {
+    var nameEl = document.getElementById("npName");
+    var statusEl = document.getElementById("npStatus");
+    var consoleEl = document.getElementById("npConsole");
+    var btn = document.getElementById("npCreate");
+
+    function line(text, cls) {
+      var el = document.createElement("div");
+      el.className = "np-line " + (cls || "");
+      el.textContent = text;
+      consoleEl.appendChild(el);
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+
+    if (!nameEl.value.trim()) { statusEl.textContent = "name the project first"; nameEl.focus(); return; }
+    if (!selected) { statusEl.textContent = "pick a project type"; return; }
+
+    btn.disabled = true;
+    statusEl.textContent = "creating…";
+    consoleEl.innerHTML = "";
+
+    var proto = location.protocol === "https:" ? "wss://" : "ws://";
+    var ws = new WebSocket(proto + location.host + "/ws/workbench");
+    ws.onopen = function () {
+      ws.send(JSON.stringify({ name: nameEl.value.trim(), template: selected.id }));
+    };
+    ws.onmessage = function (ev) {
+      var msg = JSON.parse(ev.data);
+      if (msg.type === "log") {
+        line(msg.line, { cmd: "cmd", err: "err", ok: "ok" }[msg.stream] || "");
+      } else if (msg.type === "step") {
+        statusEl.textContent = "step " + msg.index + "/" + msg.total + " — " + msg.label;
+      } else if (msg.type === "done") {
+        btn.disabled = false;
+        if (msg.ok) {
+          statusEl.textContent = "created — opened in the editor";
+          line("→ " + msg.path, "ok");
+          // Clear the name: leaving it filled meant the next click was
+          // guaranteed to fail with "already exists".
+          nameEl.value = "";
+          // Point the editor at the new project so it's immediately usable.
+          fetch("/api/project-dir", {
+            method: "PUT", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: msg.path }),
+          }).then(function () { if (window.__editor) window.__editor.reloadTree(); });
+        } else {
+          statusEl.textContent = "failed";
+          line(msg.error || "setup did not complete", "err");
+        }
+        ws.close();
+      }
+    };
+    ws.onerror = function () { btn.disabled = false; statusEl.textContent = "connection failed"; };
+  }
+
+  // ---- Settings panel: providers + API keys + start-with-windows --------
+  function renderSettingsModal(box) {
+    box.classList.add("wide");
+    box.innerHTML = "<h3>Settings<span class='drag-hint'>drag to move · stays open while you work</span></h3>" +
+      "<div class='body' id='settingsBody'>Loading…</div>" +
+      "<div class='close-row'><button data-close>Close</button></div>";
+    box.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
+
+    Promise.all([
+      fetch("/api/project-dir").then(function (r) { return r.json(); }),
+      fetch("/api/providers").then(function (r) { return r.json(); }),
+      fetch("/api/start-with-windows").then(function (r) { return r.json(); }),
+    ]).then(function (results) {
+      renderSettingsBody(results[0], results[1], results[2]);
+    }).catch(function (e) {
+      document.getElementById("settingsBody").innerHTML = "<div class='settings-err'>" + escapeHtml(e.message) + "</div>";
+    });
+  }
+
+  function renderSettingsBody(projectDir, providers, startWithWindows) {
+    var body = document.getElementById("settingsBody");
+    if (!body) return; // modal closed before the fetch resolved
+
+    var html = "<dl><dt>Project directory</dt><dd>" + escapeHtml(projectDir.project_dir) + "</dd>" +
+      "<dt>Server</dt><dd>" + escapeHtml(location.origin) + "</dd></dl>";
+
+    html += "<h4>LLM Providers</h4><div id='providerList'>";
+    if (!providers.length) {
+      html += "<div style='color:#5b6289;font-size:11.5px'>No providers configured — add one below.</div>";
+    }
+    providers.forEach(function (p) {
+      // Show the key as a short fixed stub rather than one dot per character:
+      // the full-length mask conveys nothing extra and costs the row its
+      // buttons.
+      var keyStub = p.has_api_key ? "••••" + escapeHtml(String(p.api_key_masked).slice(-4)) : "no key set";
+      html += "<div class='provider-row' data-name='" + escapeHtml(p.name) + "'>" +
+        "<span class='name'>" + escapeHtml(p.name) + "</span>" +
+        "<span class='key'>" + keyStub + "</span>" +
+        // The model is the thing this panel exists to set, so it belongs on
+        // the row instead of only behind Edit.
+        (p.model
+          ? "<span class='model'>" + escapeHtml(p.model) + "</span>"
+          : "<span class='model unset'>no model — click Edit</span>") +
+        "<span class='spacer'></span>" +
+        (p.is_active ? "<span class='active-badge'>active</span>" : "<button data-activate='" + escapeHtml(p.name) + "'>Use this</button>") +
+        "<button data-edit-provider='" + escapeHtml(p.name) + "'>Edit</button>" +
+        "<button data-delete-provider='" + escapeHtml(p.name) + "'>Delete</button>" +
+        "</div>";
+    });
+    html += "</div>";
+    html += "<button id='addProviderBtn' style='margin-top:6px'>+ Add provider</button>";
+    html += "<div id='providerForm'></div>";
+
+    html += "<h4>Startup</h4><label class='settings-checkbox'>" +
+      "<input type='checkbox' id='startWithWindowsCheck'" + (startWithWindows.enabled ? " checked" : "") + "> " +
+      "Start DariusAI when Windows starts</label>";
+
+    html += "<h4>Shortcuts</h4>" +
+      "<div style='font-size:11.5px;color:#8b93b8;margin-bottom:7px'>" +
+      "Puts DariusAI (with the brain icon, not Python's) on your desktop and in the Start Menu. " +
+      "Pin <i>that</i> shortcut to the taskbar to keep the icon there too.</div>" +
+      "<button id='installShortcutsBtn'>Create desktop &amp; Start Menu shortcuts</button>" +
+      "<div id='shortcutsResult' style='font-size:11px;color:#6ee7b7;margin-top:6px'></div>";
+
+    body.innerHTML = html;
+
+    body.querySelectorAll("[data-activate]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        fetch("/api/providers/" + encodeURIComponent(btn.dataset.activate) + "/activate", { method: "PUT" })
+          .then(refreshSettingsData);
+      });
+    });
+    body.querySelectorAll("[data-delete-provider]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        if (!confirm("Delete provider \"" + btn.dataset.deleteProvider + "\"?")) return;
+        fetch("/api/providers/" + encodeURIComponent(btn.dataset.deleteProvider), { method: "DELETE" })
+          .then(refreshSettingsData);
+      });
+    });
+    body.querySelectorAll("[data-edit-provider]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var p = providers.find(function (x) { return x.name === btn.dataset.editProvider; });
+        showProviderForm(p);
+      });
+    });
+    document.getElementById("addProviderBtn").addEventListener("click", function () { showProviderForm(null); });
+
+    document.getElementById("installShortcutsBtn").addEventListener("click", function (ev) {
+      var out = document.getElementById("shortcutsResult");
+      ev.target.disabled = true;
+      out.style.color = "#6ee7b7";
+      out.textContent = "creating…";
+      fetch("/api/shortcuts", { method: "POST" }).then(function (r) {
+        if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || ("HTTP " + r.status)); });
+        return r.json();
+      }).then(function (data) {
+        out.textContent = "created: " + data.created.join(" · ");
+      }).catch(function (e) {
+        out.style.color = "#f87171";
+        out.textContent = e.message;
+      }).finally(function () { ev.target.disabled = false; });
+    });
+
+    document.getElementById("startWithWindowsCheck").addEventListener("change", function (ev) {
+      fetch("/api/start-with-windows", {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: ev.target.checked }),
+      }).then(function (r) { return r.json(); }).then(function (data) { ev.target.checked = data.enabled; });
+    });
+  }
+
+  function refreshSettingsData() {
+    Promise.all([
+      fetch("/api/project-dir").then(function (r) { return r.json(); }),
+      fetch("/api/providers").then(function (r) { return r.json(); }),
+      fetch("/api/start-with-windows").then(function (r) { return r.json(); }),
+    ]).then(function (results) { renderSettingsBody(results[0], results[1], results[2]); });
+  }
+
+  function showProviderForm(existing) {
+    var container = document.getElementById("providerForm");
+    var isNew = !existing;
+    container.innerHTML =
+      "<div class='settings-form'>" +
+      "<label>Provider</label>" +
+      (isNew ? "<select id='pfPreset'><option value=''>choose a provider…</option></select>" : "") +
+      "<input type='text' id='pfName' value=\"" + (existing ? escapeHtml(existing.name) : "") + "\"" + (isNew ? "" : " disabled") + " placeholder='e.g. anthropic'>" +
+      "<label>Base URL</label><input type='text' id='pfBaseUrl' value=\"" + (existing ? escapeHtml(existing.base_url) : "") + "\" placeholder='https://api.anthropic.com'>" +
+      "<label>Model <span id='pfModelNote' style='color:#5b6289'>— save a key to load the list</span></label>" +
+      "<div style='display:flex;gap:6px'>" +
+      "<select id='pfModel' style='flex:1'><option value=\"" + (existing ? escapeHtml(existing.model) : "") + "\">" +
+      (existing && existing.model ? escapeHtml(existing.model) : "(no model selected)") + "</option></select>" +
+      "<button type='button' id='pfLoadModels' style='background:#1b1e38;border:1px solid rgba(255,255,255,0.15);color:#cfd3ec;border-radius:6px;padding:0 12px;font-size:11.5px;cursor:pointer'>↻ Load</button>" +
+      "</div>" +
+      "<label>API key" + (existing && existing.has_api_key ? " (leave blank to keep the current key)" : "") + "</label>" +
+      "<input type='password' id='pfApiKey' placeholder='" + (existing && existing.has_api_key ? existing.api_key_masked : "sk-ant-…") + "'>" +
+      "<div class='actions' style='margin-top:10px;display:flex;gap:8px'>" +
+      "<button class='btn primary' id='pfSave' style='background:#3b5bdb;border:none;color:#fff;border-radius:6px;padding:6px 14px;font-size:12px;cursor:pointer'>Save</button>" +
+      "<button id='pfCancel' style='background:#1b1e38;border:1px solid rgba(255,255,255,0.15);color:#e6e9f5;border-radius:6px;padding:6px 14px;font-size:12px;cursor:pointer'>Cancel</button>" +
+      "</div><div class='settings-err' id='pfErr'></div>" +
+      "</div>";
+
+    document.getElementById("pfCancel").addEventListener("click", function () { container.innerHTML = ""; });
+
+    // ---- provider presets + model discovery ---------------------------
+    var presetSel = document.getElementById("pfPreset");
+    if (presetSel) {
+      fetch("/api/provider-presets").then(function (r) { return r.json(); }).then(function (list) {
+        list.forEach(function (p) {
+          var opt = document.createElement("option");
+          opt.value = p.name; opt.textContent = p.label;
+          opt.dataset.baseUrl = p.base_url;
+          presetSel.appendChild(opt);
+        });
+      }).catch(function () { /* presets are a convenience; typing a name still works */ });
+      presetSel.addEventListener("change", function () {
+        var opt = presetSel.options[presetSel.selectedIndex];
+        if (!opt.value) return;
+        document.getElementById("pfName").value = opt.value;
+        document.getElementById("pfBaseUrl").value = opt.dataset.baseUrl || "";
+      });
+    }
+
+    function loadModels(name) {
+      var sel = document.getElementById("pfModel");
+      var note = document.getElementById("pfModelNote");
+      if (!sel || !note) return Promise.resolve();
+      var chosen = sel.value;
+      note.textContent = "— loading…"; note.style.color = "#5b6289";
+      return fetch("/api/providers/" + encodeURIComponent(name) + "/models").then(function (r) {
+        if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || ("HTTP " + r.status)); });
+        return r.json();
+      }).then(function (data) {
+        sel.innerHTML = "";
+        if (!data.models.length) {
+          sel.innerHTML = "<option value=''>(provider returned no usable models)</option>";
+        }
+        data.models.forEach(function (m) {
+          var opt = document.createElement("option");
+          opt.value = m.id;
+          opt.textContent = m.label + (m.free === true ? "  · free" : "");
+          if (m.id === chosen) opt.selected = true;
+          sel.appendChild(opt);
+        });
+        var msg = "— " + data.models.length + " model" + (data.models.length === 1 ? "" : "s");
+        var warn = false;
+        if (data.source === "documented") {
+          msg += " from the published catalogue (live list unavailable)";
+          warn = true;
+        } else if (data.free_only && data.free_filter === "applied") {
+          msg += ", free only (of " + data.total + ")";
+        } else if (data.free_filter === "unverifiable") {
+          msg += " — provider published no pricing, so none could be confirmed free";
+          warn = true;
+        }
+        note.textContent = msg;
+        note.title = data.note || data.url || "";
+        note.style.color = warn ? "#f0b45f" : "#6ee7b7";
+      }).catch(function (e) {
+        note.textContent = "— " + e.message;
+        note.style.color = "#f87171";
+      });
+    }
+
+    document.getElementById("pfLoadModels").addEventListener("click", function () {
+      var name = document.getElementById("pfName").value.trim();
+      if (!name) { document.getElementById("pfErr").textContent = "name is required"; return; }
+      loadModels(name);
+    });
+    if (existing && existing.has_api_key) loadModels(existing.name); // key already saved — fill it now
+    document.getElementById("pfSave").addEventListener("click", function () {
+      var name = document.getElementById("pfName").value.trim();
+      var errEl = document.getElementById("pfErr");
+      if (!name) { errEl.textContent = "name is required"; return; }
+      var keyInput = document.getElementById("pfApiKey").value;
+      var payload = {
+        base_url: document.getElementById("pfBaseUrl").value.trim(),
+        model: document.getElementById("pfModel").value.trim(),
+      };
+      if (keyInput) payload.api_key = keyInput; // blank = leave existing key untouched (server-side semantics)
+      fetch("/api/providers/" + encodeURIComponent(name), {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      }).then(function (r) {
+        if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || ("HTTP " + r.status)); });
+        return r.json();
+      }).then(function () {
+        // Saving a key is exactly what unlocks discovery, so it triggers the
+        // fetch right here and the form stays open for the model to be
+        // picked from the result — closing it would mean saving twice to
+        // choose a model you were never shown.
+        if (keyInput) {
+          var nameField = document.getElementById("pfName");
+          if (nameField) nameField.disabled = true;
+          var keyField = document.getElementById("pfApiKey");
+          keyField.value = ""; keyField.placeholder = "key saved ✓";
+          return loadModels(name);
+        }
+        container.innerHTML = "";
+        refreshSettingsData();
+      }).catch(function (e) { errEl.textContent = e.message; });
+    });
+  }
+
+  // =====================================================================
+  // Menu bar
+  // =====================================================================
+  function closeAllMenus() { document.querySelectorAll(".menu.open").forEach(function (m) { m.classList.remove("open"); }); }
+  document.querySelectorAll(".menu").forEach(function (menu) {
+    menu.addEventListener("click", function (ev) {
+      if (ev.target.classList.contains("menu-item")) return; // handled below
+      var wasOpen = menu.classList.contains("open");
+      closeAllMenus();
+      if (!wasOpen) menu.classList.add("open");
+    });
+  });
+  document.addEventListener("click", function (ev) {
+    if (!ev.target.closest(".menu")) closeAllMenus();
+  });
+
+  // pywebview injects window.pywebview.api asynchronously after the page
+  // loads (it fires a "pywebviewready" event when it's actually available)
+  // — capturing it once into a variable at script-load time can freeze in
+  // `null` forever if that hasn't happened yet. Look it up fresh on every
+  // call instead.
+  function getDesktopApi() { return (window.pywebview && window.pywebview.api) || null; }
+
+  // Every "I'm done with this app" gesture in the page — the ✕ button and
+  // File -> Exit — ends the process. `quit` is the Python side's single
+  // shutdown path; `close` is only a fallback for an older bridge, and
+  // window.close() for when the page is open in a plain browser instead of
+  // the desktop window.
+  function quitApp() {
+    var d = getDesktopApi();
+    if (d && d.quit) d.quit();
+    else if (d && d.close) d.close();
+    else window.close();
+  }
+
+  function isEditableElement(el) {
+    if (!el) return false;
+    var tag = (el.tagName || "").toUpperCase();
+    return tag === "INPUT" || tag === "TEXTAREA" || !!el.isContentEditable;
+  }
+
+  function copyTextToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).then(function () { return true; }).catch(function () { return false; });
+    }
+    return Promise.resolve(false);
+  }
+
+  function copyFromCurrentSelection() {
+    if (activeCM && activeCM.hasFocus && activeCM.hasFocus()) {
+      var cmText = activeCM.getSelection ? activeCM.getSelection() : "";
+      if (cmText) return copyTextToClipboard(cmText);
+    }
+    var selection = window.getSelection ? window.getSelection().toString() : "";
+    if (!selection) return Promise.resolve(false);
+    return copyTextToClipboard(selection);
+  }
+
+  function cutFocusedEditable() {
+    var el = document.activeElement;
+    if (!isEditableElement(el)) return;
+    try { document.execCommand("cut"); } catch (e) {}
+  }
+
+  function pasteIntoFocusedTarget() {
+    var el = document.activeElement;
+    if (isEditableElement(el)) {
+      try { document.execCommand("paste"); } catch (e) {}
+      return;
+    }
+    if (!(activeCM && activeCM.hasFocus && activeCM.hasFocus())) return;
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      navigator.clipboard.readText().then(function (text) {
+        if (text) activeCM.replaceSelection(text);
+      }).catch(function () {});
+    }
+  }
+
+  function selectAllInCurrentSurface() {
+    if (activeCM && activeCM.hasFocus && activeCM.hasFocus()) {
+      activeCM.execCommand("selectAll");
+      return;
+    }
+    var el = document.activeElement;
+    if (isEditableElement(el) && typeof el.select === "function") {
+      el.select();
+      return;
+    }
+    var sel = window.getSelection && window.getSelection();
+    if (!sel) return;
+    var range = document.createRange();
+    range.selectNodeContents(document.body);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  var MENU_ACTIONS = {
+    "new-project": function () { openModal("newproject"); },
+    "open-folder": function () {
+      var desktopApi = getDesktopApi();
+      if (desktopApi && desktopApi.pick_folder) {
+        desktopApi.pick_folder().then(function (path) {
+          if (!path) return;
+          fetch("/api/project-dir", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: path }) })
+            .then(function (r) { return r.json(); }).then(function () { if (window.__editor) window.__editor.reloadTree(); });
+        });
+      } else {
+        var path = prompt("Project folder path:");
+        if (!path) return;
+        fetch("/api/project-dir", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: path }) })
+          .then(function (r) { return r.json(); }).then(function () { if (window.__editor) window.__editor.reloadTree(); })
+          .catch(function () { alert("Could not open that folder."); });
+      }
+    },
+    "reset-layout": function () { WM.resetLayout(); },
+    "exit": quitApp,
+    "undo": function () { if (activeCM) activeCM.undo(); },
+    "redo": function () { if (activeCM) activeCM.redo(); },
+    "copy": function () { copyFromCurrentSelection(); },
+    "cut": cutFocusedEditable,
+    "paste": pasteIntoFocusedTarget,
+    "select-all": selectAllInCurrentSurface,
+    "find": function () { if (activeCM) activeCM.execCommand("findPersistent"); },
+    "show-settings": function () { openModal("settings"); },
+    "show-help": function () { openModal("help"); },
+    "show-about": function () { openModal("about"); },
+  };
+  document.querySelectorAll(".menu-item").forEach(function (item) {
+    item.addEventListener("click", function () {
+      closeAllMenus();
+      var action = MENU_ACTIONS[item.dataset.action];
+      if (action) action();
+    });
+  });
+
+  document.addEventListener("keydown", function (ev) {
+    var mod = ev.ctrlKey || ev.metaKey;
+    if (!mod || ev.altKey) return;
+    var key = String(ev.key || "").toLowerCase();
+    if (key === "c") {
+      copyFromCurrentSelection().then(function () {});
+      return;
+    }
+    if (key === "x") {
+      cutFocusedEditable();
+      return;
+    }
+    if (key === "v") {
+      pasteIntoFocusedTarget();
+      return;
+    }
+    if (key === "a") {
+      selectAllInCurrentSurface();
+      ev.preventDefault();
+    }
+  });
+
+  // pywebview's drag handler is a mousedown listener on <body> that walks up
+  // from the event target looking for the drag region, so a press on a window
+  // button would also start dragging the window. Stopping propagation at the
+  // button keeps the press from ever reaching that listener (`no-drag` CSS
+  // isn't enough — WebView2 doesn't implement app-region at all).
+  document.querySelectorAll("#titlebar .win-btn, #btnReload").forEach(function (btn) {
+    btn.addEventListener("mousedown", function (ev) { ev.stopPropagation(); });
+  });
+  document.getElementById("btnReload").addEventListener("click", function () { location.reload(); });
+
+  document.getElementById("btnClose").addEventListener("click", quitApp);
+  document.getElementById("btnMinimize").addEventListener("click", function () {
+    var d = getDesktopApi();
+    if (d && d.minimize) d.minimize();
+  });
+
+  function toggleMaximize() {
+    var desktopApi = getDesktopApi();
+    if (!desktopApi || !desktopApi.toggle_maximize) return;
+    // pywebview's js_api bridge returns a Promise for every exposed method.
+    desktopApi.toggle_maximize().then(function (isMaximized) {
+      var btn = document.getElementById("btnMaximize");
+      btn.textContent = isMaximized ? "❐" : "▢";
+      btn.title = isMaximized ? "Restore" : "Maximize";
+    });
+  }
+  document.getElementById("btnMaximize").addEventListener("click", toggleMaximize);
+  // Double-clicking the drag region is the standard OS convention for
+  // maximize/restore — a frameless window doesn't get that for free.
+  document.getElementById("titlebar").addEventListener("dblclick", function (ev) {
+    if (ev.target.closest(".win-btn")) return;
+    toggleMaximize();
+  });
+
+  // =====================================================================
+  // Bootstrap — mount the three panels into the window manager
+  // =====================================================================
+  var neuralHost = document.createElement("div");
+  neuralHost.id = "neuralCanvasWrap"; neuralHost.style.position = "absolute"; neuralHost.style.inset = "0";
+  var neuralPanel = WM.createPanel("neural", "Neural View", neuralHost);
+
+  var chatHost = document.createElement("div");
+  chatHost.style.position = "absolute"; chatHost.style.inset = "0";
+  var chatPanel = WM.createPanel("chat", "Chat", chatHost);
+
+  var editorHost = document.createElement("div");
+  editorHost.style.position = "absolute"; editorHost.style.inset = "0";
+  var editorPanel = WM.createPanel("editor", "Editor", editorHost);
+
+  WM.init();
+
+  var neuralApi = buildNeuralView(neuralHost);
+  var chatApi = buildChatView(chatHost);
+  var editorApi = buildEditorView(editorHost);
+  window.__editor = editorApi;
+
+  window.addEventListener("resize", function () { neuralApi.resize(); });
+})();
+</script>
+</body>
+</html>
+
