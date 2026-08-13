@@ -36,6 +36,10 @@ from .model_catalog import normalize_base_url
 
 DEFAULT_TIMEOUT = 180.0
 DEFAULT_MAX_TOKENS = 4096
+# OpenAI gpt-4o-class default context window. Override via the
+# constructor for models with different limits (e.g. gpt-4.1-mini's
+# 1M context, or smaller legacy models).
+DEFAULT_CONTEXT_WINDOW = 128_000
 
 
 def explain_provider_error(status: int, detail: str, model: str, url: str) -> str:
@@ -77,6 +81,7 @@ class OpenAILLM:
         max_tokens: int = DEFAULT_MAX_TOKENS,
         timeout: float = DEFAULT_TIMEOUT,
         transport: Any | None = None,
+        context_window: int = DEFAULT_CONTEXT_WINDOW,
     ):
         if not model:
             raise ValueError(
@@ -89,6 +94,7 @@ class OpenAILLM:
         self.api_key = api_key
         self.max_tokens = max_tokens
         self.timeout = timeout
+        self.context_window = context_window
         self._transport = transport  # injected in tests; None means real httpx
 
     # -- outbound translation ----------------------------------------------
@@ -226,4 +232,16 @@ class OpenAILLM:
                 detail = getattr(response, "text", "")[:400]
             raise RuntimeError(explain_provider_error(status, detail, self.model, url))
 
-        return self._response_to_blocks(response.json())
+        payload = response.json()
+        result = self._response_to_blocks(payload)
+        # OpenAI returns `usage` with `prompt_tokens`, `completion_tokens`,
+        # and `total_tokens`. We map them to the same shape Anthropic
+        # uses so the chat session doesn't care which provider is live.
+        usage_obj = payload.get("usage") or {}
+        usage = {
+            "input_tokens": int(usage_obj.get("prompt_tokens") or 0),
+            "output_tokens": int(usage_obj.get("completion_tokens") or 0),
+        }
+        result["usage"] = usage
+        result["context_window"] = self.context_window
+        return result

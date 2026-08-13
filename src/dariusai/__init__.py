@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 
-__version__ = "0.57.0a0"
+__version__ = "0.74.0a0"
 
 _STAGES = {"a": "alpha", "b": "beta", "rc": "rc"}
 _VERSION_RE = re.compile(r"^(\d+)\.(\d+)(?:\.(\d+))?(?:(a|b|rc)(\d+))?$")

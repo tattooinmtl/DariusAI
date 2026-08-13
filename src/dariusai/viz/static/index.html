@@ -37,9 +37,15 @@
     background: rgba(240,180,95,0.08); }
   #titlebar .spacer { flex: 1; }
   #titlebar .win-btn { -webkit-app-region: no-drag; width: 44px; height: 34px; border: none; background: none;
-    color: #8b93b8; font-size: 13px; cursor: pointer; }
+    color: #8b93b8; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
   #titlebar .win-btn:hover { background: rgba(255,255,255,0.08); color: #eef1ff; }
   #titlebar .win-btn.close:hover { background: #c0392b; color: #fff; }
+  /* The maximize button's icon swaps when the window is maximized: a single
+     outlined square while windowed, two overlapping squares while maximized
+     (the "restore" affordance). Both are in the DOM; CSS picks one. */
+  #btnMaximize svg.restore { display: none; }
+  #btnMaximize.maximized svg.maximize { display: none; }
+  #btnMaximize.maximized svg.restore { display: block; }
   #btnReload { -webkit-app-region: no-drag; margin-right: 10px; font-family: inherit; font-size: 11px; font-weight: 600;
     color: #0a0b18; background: #f0b45f; border: none; border-radius: 999px; padding: 4px 12px; cursor: pointer;
     box-shadow: 0 0 14px rgba(240,180,95,0.45); }
@@ -61,25 +67,44 @@
   #dockRow { position: absolute; inset: 0; display: flex; flex-direction: row; overflow: hidden; }
   #floatingLayer { position: absolute; inset: 0; pointer-events: none; z-index: 50; }
 
-  .splitter { flex: 0 0 6px; cursor: col-resize; background: rgba(255,255,255,0.03); position: relative; }
-  .splitter:hover, .splitter.active { background: #3b5bdb; }
+  /* Splitter — 8px hit area, with a bar that only appears on hover/grab.
+     The 3% white tint in the original was invisible against the #05060f
+     background and gave no feedback that the column boundary was grabable. */
+  .splitter { flex: 0 0 8px; cursor: col-resize; background: transparent; position: relative; }
+  .splitter::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px;
+    margin-left: -1px; background: rgba(110,168,255,0.18); border-radius: 1px; transition: background 120ms, width 120ms; }
+  .splitter:hover::before, .splitter.active::before { background: #3b5bdb; width: 3px; margin-left: -1.5px; }
 
   .panel { display: flex; flex-direction: column; min-width: 0; background: #05060f; position: relative; overflow: hidden; }
   .panel:not(.floating) { flex: 1 1 0; border-right: none; }
   .panel.floating { position: fixed; pointer-events: auto; border: 1px solid rgba(110,168,255,0.35);
     border-radius: 10px; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
   .panel-titlebar { flex: none; display: flex; align-items: center; height: 30px; padding: 0 4px 0 10px;
-    background: #0d0f20; border-bottom: 1px solid rgba(255,255,255,0.07); cursor: default; user-select: none; }
-  .panel.floating .panel-titlebar { cursor: move; border-radius: 9px 9px 0 0; }
+    background: #0d0f20; border-bottom: 1px solid rgba(255,255,255,0.07); cursor: grab; user-select: none; }
+  .panel-titlebar:active { cursor: grabbing; }
+  .panel.floating .panel-titlebar { border-radius: 9px 9px 0 0; }
   .panel-title { font-size: 11.5px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: #9aa1c7; flex: 1; }
   .panel-btns { display: flex; gap: 2px; }
   .panel-btn { background: none; border: none; color: #8b93b8; font-size: 12px; width: 24px; height: 22px; border-radius: 5px; cursor: pointer; }
   .panel-btn:hover { background: rgba(255,255,255,0.1); color: #eef1ff; }
   .panel-body { flex: 1; min-height: 0; position: relative; overflow: hidden; }
-  .panel-resize { display: none; position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; }
-  .panel.floating .panel-resize { display: block; }
-  .panel-resize::after { content: ""; position: absolute; right: 3px; bottom: 3px; width: 8px; height: 8px;
-    border-right: 2px solid rgba(255,255,255,0.25); border-bottom: 2px solid rgba(255,255,255,0.25); }
+  /* Docked-mode handle = pop-out button (click to float the panel).
+     Floating-mode handle = the existing nwse-resize corner.
+     One element, two roles — the click handler decides which.
+     Hidden by default for docked panels: the titlebar already carries a
+     `panel-toggle` button that does the same pop-out action, so the
+     absolute-positioned bottom-right handle was just dangling in empty
+     space below docked content (visible whenever the cursor crossed the
+     panel). The button is kept in the DOM because the floating-mode
+     resize math still references its bounding rect, but it only renders
+     when the panel is actually floating. */
+  .panel-resize { display: none; }
+  .panel.floating .panel-resize { display: flex; align-items: center; justify-content: center;
+    position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize;
+    z-index: 5; }
+  .panel.floating .panel-resize::after { content: ""; position: absolute; right: 3px; bottom: 3px;
+    width: 8px; height: 8px;
+    border-right: 2px solid rgba(255,255,255,0.7); border-bottom: 2px solid rgba(255,255,255,0.7); }
 
   /* ---- neural view ----------------------------------------------------- */
   #neuralCanvasWrap { position: absolute; inset: 0; }
@@ -103,6 +128,18 @@
   .chip.on .dot { opacity: 1; box-shadow: 0 0 7px currentColor; }
   .hud-foot { position: absolute; left: 13px; bottom: 12px; z-index: 5; pointer-events: none;
     font-size: 10.5px; color: #6c7399; line-height: 1.7; text-shadow: 0 1px 3px #05060f; }
+  /* Real-time frames-per-second readout at the bottom-right of the 3D
+     viewport. Green at ~60 (locked refresh), amber in the normal band,
+     red when the renderer is dropping below 29 fps. pointer-events:none
+     keeps it from intercepting drags on the canvas underneath. */
+  .nv-fps { position: absolute; right: 11px; bottom: 11px; z-index: 6;
+    padding: 3px 8px; border-radius: 6px; font-family: ui-monospace, Consolas, monospace;
+    font-size: 11px; font-weight: 600; letter-spacing: .04em; pointer-events: none;
+    background: rgba(10,12,26,0.62); border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  .nv-fps.normal { color: #f0b45f; }
+  .nv-fps.high   { color: #6ee7b7; }
+  .nv-fps.low    { color: #f87171; }
   .hud-card { background: rgba(10,12,26,0.62); backdrop-filter: blur(9px); -webkit-backdrop-filter: blur(9px);
     border: 1px solid rgba(255,255,255,0.07); border-radius: 10px;
     padding: 8px 10px; backdrop-filter: blur(6px); font-size: 11px; }
@@ -150,6 +187,178 @@
   #nodeInspector .err { color: #f87171; font-size: 11.5px; margin-top: 8px; }
 
   /* ---- chat --------------------------------------------------------- */
+  /* ---- thinking box -------------------------------------------- */
+  /* A small collapsible panel that streams the agent's intermediate work
+     (tool calls, intermediate narration). Collapsed by default — click
+     the head to expand. The shape mirrors Claude Code / Cursor's
+     reasoning panels so the affordance is familiar. */
+  .chat-thinking { margin: 6px 14px; border: 1px solid rgba(110,168,255,0.25);
+    border-radius: 8px; background: rgba(13,17,38,0.6); overflow: hidden; }
+  .chat-thinking-head { display: flex; align-items: center; gap: 8px;
+    padding: 7px 11px; cursor: pointer; user-select: none; font-size: 11.5px;
+    color: #9aa1c7; transition: background 120ms; }
+  .chat-thinking-head:hover { background: rgba(110,168,255,0.08); }
+  .chat-thinking-icon { font-size: 13px; filter: grayscale(0.2); }
+  .chat-thinking-label { flex: 1; font-weight: 500; letter-spacing: 0.02em; }
+  .chat-thinking-count { font-size: 10px; padding: 1px 7px;
+    background: rgba(110,168,255,0.15); border-radius: 10px;
+    color: #6ea8ff; font-variant-numeric: tabular-nums; }
+  .chat-thinking-toggle { font-size: 10px; color: #6c7399; transition: transform 120ms; }
+  .chat-thinking.open .chat-thinking-toggle { transform: rotate(90deg); }
+  .chat-thinking-body { display: none; max-height: 280px; overflow-y: auto;
+    padding: 4px 0 6px 0; border-top: 1px solid rgba(110,168,255,0.1); }
+  .chat-thinking.open .chat-thinking-body { display: block; }
+  .chat-thinking-step { padding: 4px 12px 4px 24px; font-family: ui-monospace, Consolas, monospace;
+    font-size: 10.5px; line-height: 1.55; color: #b8c0e0; white-space: pre-wrap;
+    word-break: break-word; border-left: 2px solid transparent; margin-left: 8px; }
+  .chat-step-tool { color: #6ea8ff; border-left-color: rgba(110,168,255,0.4); }
+  .chat-step-result { color: #8b93b8; border-left-color: rgba(139,147,184,0.3); }
+  .chat-step-text { color: #c4c9e6; }
+  .chat-thinking.done { opacity: 0.85; }
+  .chat-thinking.done .chat-thinking-label { color: #6ee7b7; }
+
+  /* ── Chat TodoList panel (per superpowers "If it has a checklist,   ── */
+  /* ── create a todo per item") — always visible above the messages, ── */
+  /* ── hidden when empty so the empty-chat welcome isn't crowded.    ── */
+  .chat-todos { display: none; margin: 8px 14px 0; padding: 8px 10px;
+    border: 1px solid rgba(110,168,255,0.18); border-radius: 8px;
+    background: rgba(13,17,38,0.5); }
+  .chat-todos.has-items { display: block; }
+  .chat-todos-title { display: flex; align-items: center; gap: 6px;
+    font-size: 10.5px; color: #6c7399; text-transform: uppercase;
+    letter-spacing: .08em; margin-bottom: 5px; }
+  .chat-todos-progress { margin-left: auto; font-size: 10px; color: #6c7399;
+    font-variant-numeric: tabular-nums; letter-spacing: 0; text-transform: none; }
+  .chat-todos-list { list-style: none; padding: 0; margin: 0; }
+  .chat-todo { display: flex; align-items: flex-start; gap: 8px;
+    padding: 3px 0; font-size: 12px; line-height: 1.4; color: #cfd3ec; }
+  .chat-todo-icon { flex: none; width: 14px; text-align: center;
+    font-size: 11px; line-height: 16px; margin-top: 1px; }
+  .chat-todo.done .chat-todo-icon { color: #6ee7b7; }   /* green checkmark */
+  .chat-todo.in_progress .chat-todo-icon { color: #6ea8ff; } /* blue dot */
+  .chat-todo.pending .chat-todo-icon { color: #4d5378; }    /* empty circle */
+  .chat-todo.done .chat-todo-title { color: #8b93b8; text-decoration: line-through; }
+  .chat-todo.in_progress .chat-todo-title { color: #e6e9f5; font-weight: 500; }
+  .chat-todo.pending .chat-todo-title { color: #6c7399; }
+  /* The user wants to copy phase titles out of the panel. Default
+     user-select is none on the whole chat view (so drag-selecting
+     text doesn't fight the pywebview drag), so we re-enable it
+     just for the TodoList rows. */
+  .chat-todo, .chat-todo-title { user-select: text; -webkit-user-select: text; cursor: text; }
+  .chat-todo-icon { cursor: default; }
+  .chat-todo-title { flex: 1; }
+
+  /* ── Token stats footer — real-time TPS + context window gauge  ── */
+  /* ── Updated by token_stats WebSocket events (see chat.py).     ── */
+  .chat-stats { display: flex; align-items: center; gap: 11px;
+    padding: 5px 14px; font-size: 10.5px; font-family: ui-monospace, Consolas, monospace;
+    color: #6c7399; border-top: 1px solid rgba(110,168,255,0.10);
+    background: rgba(10,12,26,0.55); flex: none; }
+  .chat-stats-tps { color: #6ea8ff; font-weight: 600; }
+  .chat-stats-cnt { color: #cfd3ec; }
+  .chat-stats-pct { color: #6ee7b7; }
+  .chat-stats-pct.warn { color: #f0b45f; }
+  .chat-stats-pct.danger { color: #f87171; }
+  .chat-stats-spacer { flex: 1; }
+  /* Slash-command picker — same visual register as the other chat
+     panels. Positioned absolutely below the input row when open. */
+  .chat-cmd-dropdown {
+    position: absolute;
+    left: 10%; right: 10%; bottom: calc(100% + 4px);
+    max-height: 260px;
+    background: #0d0f22;
+    border: 1px solid rgba(110, 168, 255, 0.35);
+    border-radius: 8px;
+    box-shadow: 0 -8px 24px rgba(0,0,0,0.85);
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 1000;
+  }
+  .chat-cmd-dropdown[hidden] {
+    display: none !important;
+  }
+  .chat-cmd-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.02);
+    overflow-x: auto;
+  }
+  .chat-cmd-tab {
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    color: #8b93b8;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .chat-cmd-tab.active { background: rgba(110, 168, 255, 0.18); color: #cfe0ff; }
+  .chat-cmd-list { overflow-y: auto; flex: 1; padding: 4px 0; }
+  .chat-cmd-item {
+    padding: 5px 14px;
+    font-size: 12px;
+    color: #cfd3ec;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .chat-cmd-item.highlighted { background: rgba(110, 168, 255, 0.18); color: #fff; }
+  .chat-cmd-item .group-tag {
+    font-size: 10px;
+    color: #6c7399;
+    margin-left: auto;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .chat-cmd-hint {
+    padding: 4px 12px;
+    font-size: 10px;
+    color: #6c7399;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.02);
+  }
+  /* Compact button — sits next to the token stats footer. Sends
+     {"type":"compact"} over the WebSocket; the server invokes
+     session.compact(force=True) and replies with context_compacted. */
+  .chat-compact-btn {
+    background: rgba(110, 168, 255, 0.12);
+    color: #6ea8ff;
+    border: 1px solid rgba(110, 168, 255, 0.35);
+    border-radius: 4px;
+    padding: 2px 9px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s, color 0.15s;
+  }
+  .chat-compact-btn:hover { background: rgba(110, 168, 255, 0.22); color: #9bc1ff; }
+  .chat-compact-btn:active { background: rgba(110, 168, 255, 0.30); }
+  .chat-compact-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  /* Toast banner that appears after a context_compacted event —
+     "⚡ Context Compacted: 154,200 → 14,100 tok (-90.8%)". */
+  .chat-compact-banner {
+    margin: 6px 12px 0 12px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    background: rgba(110, 168, 255, 0.10);
+    border: 1px solid rgba(110, 168, 255, 0.30);
+    color: #9bc1ff;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    animation: compact-fade-in 0.18s ease-out;
+  }
+  @keyframes compact-fade-in {
+    from { opacity: 0; transform: translateY(-3px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .chat-compact-banner .arrow { color: #4d5378; }
+  .chat-compact-banner .pct   { color: #6ee7b7; font-weight: 600; margin-left: auto; }
   .chat-view { display: flex; flex-direction: column; height: 100%; }
   .chat-messages { flex: 1; overflow-y: auto; padding: 14px 10%; display: flex; flex-direction: column; gap: 10px; }
   .chat-msg { max-width: 100%; padding: 9px 13px; border-radius: 10px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
@@ -203,7 +412,13 @@
   /* ---- editor --------------------------------------------------------- */
   .editor-view { display: flex; flex-direction: row; height: 100%; }
   .file-tree { width: 220px; flex: none; overflow-y: auto; border-right: 1px solid rgba(255,255,255,0.08); padding: 8px; font-size: 12px; }
-  .file-row { padding: 4px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-row { padding: 4px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+  /* File-tree icons used to be 📁 / 📄 emoji. WebView2's fallback font set
+     doesn't carry the color-emoji glyphs and rendered them as missing-glyph
+     boxes — the leading column of every row was a small rectangle. Inline
+     SVG draws a folder/page at the same size as the text. */
+  .file-row .ft-icon { flex: none; width: 14px; height: 14px; color: #8b93b8; display: inline-flex; align-items: center; justify-content: center; }
+  .file-row.dir .ft-icon { color: #6ea8ff; }
   .file-row:hover { background: rgba(255,255,255,0.06); }
   .file-row.selected { background: rgba(59,91,219,0.3); }
   .editor-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -269,8 +484,11 @@
     background: rgba(16,20,42,0.85); border: 1px solid rgba(140,170,255,0.45);
     box-shadow: 0 4px 14px rgba(0,0,0,0.45); transition: transform .1s ease, background .1s ease; }
   .dock-zone.hot .dock-pip { background: #3b5bdb; border-color: #9ab6ff; transform: scale(1.28); }
-  .dock-preview { position: absolute; display: none; background: rgba(59,91,219,0.18);
-    border: 2px solid #6ea8ff; border-radius: 6px; pointer-events: none; }
+  /* Dock preview: a thin outline that hugs the exact slot the panel will
+     land in. The old version was a full-height 33% rectangle that filled
+     the screen and obscured the zones beneath it. */
+  .dock-preview { position: absolute; display: none; background: rgba(59,91,219,0.14);
+    border: 2px solid #6ea8ff; border-radius: 8px; pointer-events: none; box-shadow: 0 0 24px rgba(110,168,255,0.25); }
 
   /* ---- modals --------------------------------------------------------- */
   #modalRoot { position: fixed; inset: 0; z-index: 500; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.5); }
@@ -319,6 +537,21 @@
     border: 1px solid rgba(255,255,255,0.12); color: #e6e9f5; border-radius: 6px; padding: 6px 8px; font-size: 12.5px; outline: none; }
   .settings-checkbox { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #cfd3ec; margin-top: 6px; }
   .settings-checkbox input { accent-color: #6ea8ff; }
+  /* Layout Options modal — same shape as settings, but tighter and grey
+     buttons (no live save). Plain checkbox rows so the toggles read as
+     "this changes behaviour", not as a form to submit. */
+  .layout-opt-row { display: flex; align-items: flex-start; gap: 9px; padding: 9px 10px;
+    margin-top: 10px; background: #0d0f20; border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 7px; font-size: 12.5px; color: #cfd3ec; }
+  .layout-opt-row input { margin-top: 2px; accent-color: #6ea8ff; }
+  .layout-opt-row .lbl { font-weight: 600; color: #eef1ff; display: block; margin-bottom: 2px; }
+  .layout-opt-row .desc { color: #8b93b8; font-size: 11.5px; line-height: 1.45; }
+  .layout-opt-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .layout-opt-actions button { background: #1b1e38; border: 1px solid rgba(255,255,255,0.15);
+    color: #eef1ff; border-radius: 6px; padding: 6px 14px; font-size: 12px; cursor: pointer; }
+  .layout-opt-actions button:hover { border-color: rgba(255,255,255,0.3); }
+  .layout-opt-actions button.danger { background: #7f1d1d; border-color: #7f1d1d; }
+  .layout-opt-actions button.danger:hover { background: #991b1b; }
   .settings-err { color: #f87171; font-size: 11px; margin-top: 6px; }
 
   /* ---- new project form ---------------------------------------------- */
@@ -348,9 +581,17 @@
     <div class="brand"><span class="icon">🧠</span><span>DariusAI</span><span class="version" id="versionBadge"></span></div>
     <div class="spacer"></div>
     <button id="btnReload" title="This window is running an older build of the app" style="display:none">⟳ New build — Reload</button>
-    <button class="win-btn" id="btnMinimize" title="Minimize">─</button>
-    <button class="win-btn" id="btnMaximize" title="Maximize">▢</button>
-    <button class="win-btn close" id="btnClose" title="Close">✕</button>
+    <!-- Titlebar window buttons. They used to be Unicode glyphs (─, ▢, ✕)
+         that render fine in Segoe UI on a normal Edge tab but show as
+         missing-glyph boxes inside WebView2's fallback font set, so the
+         min/max/close icons looked broken. Inline SVG draws the same
+         affordances without depending on font coverage. -->
+    <button class="win-btn" id="btnMinimize" title="Minimize"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><line x1="0" y1="8" x2="10" y2="8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>
+    <button class="win-btn" id="btnMaximize" title="Maximize">
+      <svg class="maximize" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect x="0.7" y="0.7" width="8.6" height="8.6" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
+      <svg class="restore" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect x="2.7" y="2.7" width="6.6" height="6.6" fill="none" stroke="currentColor" stroke-width="1.2"/><polyline points="0.7,6 0.7,0.7 6,0.7" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+    </button>
+    <button class="win-btn close" id="btnClose" title="Close"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>
   </div>
   <div id="menubar">
     <div class="menu" data-menu="file">File
@@ -378,7 +619,7 @@
       <div class="menu-dropdown">
         <div class="menu-item" data-action="show-settings">Preferences…</div>
         <div class="menu-sep"></div>
-        <div class="menu-item" data-action="reset-layout">Reset Window Layout</div>
+        <div class="menu-item" data-action="show-layout-options">Layout Options…</div>
       </div>
     </div>
     <div class="menu" data-menu="help">Help
@@ -598,9 +839,21 @@
     }
 
     function attachSplitter(sp, leftPanel) {
+      // Resize the column WRAP, not the first panel inside it. The wrap lives
+      // in #dockRow (flex-direction: row), so flex-basis on it is the column's
+      // width and dragging the splitter actually moves the next column over.
+      // Writing flex onto `leftPanel.el` looked correct in isolation but the
+      // panel sits inside a column-direction wrap, so flex-basis was being
+      // applied to the panel's height — the splitter dragged sideways and the
+      // panel stretched down instead, clipped by overflow: hidden. Felt like
+      // the resize was running on the wrong axis.
       var dragging = false, startX = 0, startW = 0;
+      function leftWrap() { return leftPanel.el.parentElement; }
       sp.addEventListener("mousedown", function (ev) {
-        dragging = true; startX = ev.clientX; startW = leftPanel.el.getBoundingClientRect().width;
+        var wrap = leftWrap();
+        dragging = true;
+        startX = ev.clientX;
+        startW = wrap ? wrap.getBoundingClientRect().width : leftPanel.el.getBoundingClientRect().width;
         sp.classList.add("active");
         ev.preventDefault();
       });
@@ -608,7 +861,10 @@
         if (!dragging) return;
         var w = Math.max(220, Math.min(window.innerWidth - 300, startW + (ev.clientX - startX)));
         leftPanel.dockWidth = w;
-        leftPanel.el.style.flex = "0 0 " + w + "px";
+        var wrap = leftWrap();
+        if (wrap && wrap.classList.contains("dock-column")) {
+          wrap.style.flex = "0 0 " + w + "px";
+        }
         window.dispatchEvent(new Event("resize"));
       });
       window.addEventListener("mouseup", function () {
@@ -660,12 +916,15 @@
       });
 
       if (activeZone && preview) {
-        var parts = activeZone.split(":");
-        preview.style.display = "block";
-        preview.style.left = (COLUMNS.indexOf(parts[0]) * 33.333) + "%";
-        preview.style.width = "33.333%";
-        preview.style.top = "0";
-        preview.style.height = "100%";
+        var zone = dockOverlay.querySelector('[data-slot="' + activeZone + '"]');
+        if (zone) {
+          var zr = zone.getBoundingClientRect();
+          preview.style.display = "block";
+          preview.style.left = (zr.left - ws.left) + "px";
+          preview.style.top = (zr.top - ws.top) + "px";
+          preview.style.width = zr.width + "px";
+          preview.style.height = zr.height + "px";
+        }
       } else if (preview) {
         preview.style.display = "none";
       }
@@ -757,17 +1016,40 @@
         closePanel(panel);
       });
 
-      var dragging = false, dragFrom = [0, 0], startXY = [0, 0];
+      var dragging = false, dragFrom = [0, 0], startXY = [0, 0], dragOffset = [0, 0];
       bar.addEventListener("mousedown", function (ev) {
-        if (panel.mode !== "floating" || ev.target === toggleBtn || ev.target === closeBtn) return;
-        dragging = true; dragFrom = [ev.clientX, ev.clientY]; startXY = [panel.x, panel.y];
+        if (ev.target === toggleBtn || ev.target === closeBtn) return;
+        // Both docked and floating panels can be picked up by their title
+        // bar. A docked panel is floated first so it follows the cursor;
+        // a floating panel just tracks the cursor from its current spot.
+        if (panel.mode !== "floating") {
+          var rect = panel.el.getBoundingClientRect();
+          dragOffset = [ev.clientX - rect.left, ev.clientY - rect.top];
+          // Anchor the future floating rect so the panel doesn't jump on
+          // pickup: it lifts where you grabbed it.
+          panel.x = ev.clientX - dragOffset[0];
+          panel.y = ev.clientY - dragOffset[1];
+          setMode(panel, "floating");
+          // setMode applied the rect; dragOffset/end-start give the same
+          // picture as if we had been floating from the start.
+        }
+        dragging = true;
+        dragFrom = [ev.clientX, ev.clientY];
+        startXY = [panel.x, panel.y];
         bringToFront(panel);
         showDockTargets();          // VS-style: targets appear as you pick it up
         ev.preventDefault();
       });
       var resizing = false, resizeFrom = [0, 0], resizeStartWH = [0, 0];
       resizeHandle.addEventListener("mousedown", function (ev) {
-        if (panel.mode !== "floating") return;
+        // Docked-mode handle = pop-out button: float the panel immediately.
+        // Floating-mode handle = corner resize: track the drag.
+        if (panel.mode !== "floating") {
+          ev.stopPropagation();
+          ev.preventDefault();
+          setMode(panel, "floating");
+          return;
+        }
         resizing = true; resizeFrom = [ev.clientX, ev.clientY]; resizeStartWH = [panel.w, panel.h];
         bringToFront(panel);
         ev.preventDefault(); ev.stopPropagation();
@@ -877,6 +1159,23 @@
     var ctx = canvas.getContext("2d");
     var W = 0, H = 0, DPR = Math.max(1, window.devicePixelRatio || 1);
 
+    // Neural-view preferences: which 3D-scene toggles are on. Persisted in
+    // localStorage so the choices survive a reload. Defaults to "all on" so
+    // a fresh install looks identical to the pre-toggles build.
+    var NEURAL_PREFS_KEY = "dariusai.neural.v1";
+    function loadNeuralPrefs() {
+      try {
+        var raw = localStorage.getItem(NEURAL_PREFS_KEY);
+        if (!raw) return { showLabels: true, showAnimations: true };
+        var p = JSON.parse(raw);
+        return { showLabels: p.showLabels !== false, showAnimations: p.showAnimations !== false };
+      } catch (e) { return { showLabels: true, showAnimations: true }; }
+    }
+    function saveNeuralPrefs() {
+      try { localStorage.setItem(NEURAL_PREFS_KEY, JSON.stringify(neuralPrefs)); } catch (e) {}
+    }
+    var neuralPrefs = loadNeuralPrefs();
+
     var hud = document.createElement("div");
     hud.className = "hud";
     hud.innerHTML =
@@ -892,6 +1191,17 @@
     hudFoot.className = "hud-foot";
     hudFoot.innerHTML = "<div id='nvActivityLog'></div><div id='nvStats'></div>";
     container.appendChild(hudFoot);
+
+    // Real-time frames-per-second readout at the bottom-right. Colour codes
+    // itself by the same thresholds the user asked for: green at ~60, amber
+    // in the normal band, red below 29. The element starts as `nv-fps low`
+    // so the very first paint (no measurement yet) doesn't lie about being
+    // healthy.
+    var fpsEl = document.createElement("div");
+    fpsEl.className = "nv-fps low";
+    fpsEl.id = "nvFps";
+    fpsEl.textContent = "— fps";
+    container.appendChild(fpsEl);
 
     function resize() {
       var r = container.getBoundingClientRect();
@@ -1232,6 +1542,10 @@
     var pulses = [], flashes = new Map(), inUseUntil = new Map();
     var thinking = false;
     function pulse(fromId, toId, color, dur) {
+      // With animations off, pulses aren't drawn anyway, but we'd still queue
+      // them every time the agent thinks — drop the call at the source so the
+      // array can't grow unboundedly during long sessions with animations off.
+      if (!neuralPrefs.showAnimations) return;
       pulses.push({ fromId: fromId, toId: toId, start: performance.now(), dur: dur || 700, color: color || "#eaf2ff",
         jitter: [] });
     }
@@ -1316,13 +1630,22 @@
         var inUse = inUseUntil.has(nd.id) && inUseUntil.get(nd.id) > now;
         var baseAlpha = dim ? 0.12 : 1;
 
-        // sustained "in use" halo — separate from the sharp activity flash
+        // sustained "in use" halo — separate from the sharp activity flash.
+        // When animations are off, draw a flat ring at the same radius instead
+        // of the pulsing one, so "this node was used" still reads.
         if (inUse && !isBrain) {
           var useT = (inUseUntil.get(nd.id) - now) / 6000;
-          ctx.globalAlpha = 0.25 + 0.15 * Math.sin(now / 260) * useT;
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 1.5;
-          ctx.beginPath(); ctx.arc(p.sx, p.sy, r + 6 + Math.sin(now / 260) * 2, 0, Math.PI * 2); ctx.stroke();
+          if (neuralPrefs.showAnimations) {
+            ctx.globalAlpha = 0.25 + 0.15 * Math.sin(now / 260) * useT;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.arc(p.sx, p.sy, r + 6 + Math.sin(now / 260) * 2, 0, Math.PI * 2); ctx.stroke();
+          } else {
+            ctx.globalAlpha = 0.35;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.arc(p.sx, p.sy, r + 6, 0, Math.PI * 2); ctx.stroke();
+          }
         }
 
         ctx.globalAlpha = baseAlpha;
@@ -1372,7 +1695,10 @@
         // Atom: an electron on a tilted orbit around the core. The orbit
         // ellipse is squashed by a slow sine so it reads as a ring seen in
         // 3D rather than a flat circle drawn on the screen.
-        if (!dim) {
+        // Gated by showAnimations: with animations off, only the static ring
+        // is drawn (no moving electron — the "ball of energy" the user wants
+        // to be able to switch off).
+        if (!dim && neuralPrefs.showAnimations) {
           var orbitR = r * 1.9;
           var tilt = now / 2600 + hashHue(nd.id) / 57;
           var squash = 0.28 + 0.24 * (1 + Math.sin(now / 1700 + nd.x * 0.01)) / 2;
@@ -1391,6 +1717,20 @@
           ctx.shadowBlur = 0;
           ctx.restore();
           ctx.globalAlpha = baseAlpha;
+        } else if (!dim && !neuralPrefs.showAnimations) {
+          // Static ring, no electron — same orbit radius as the animated
+          // version, just frozen. Anchored at a deterministic phase so the
+          // view doesn't look like it just stopped mid-animation.
+          var sOrbitR = r * 1.9;
+          var sSquash = 0.4;
+          ctx.save();
+          ctx.translate(p.sx, p.sy);
+          ctx.rotate(hashHue(nd.id) / 57);
+          ctx.globalAlpha = baseAlpha * 0.32;
+          ctx.strokeStyle = color; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.ellipse(0, 0, sOrbitR, sOrbitR * sSquash, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.restore();
+          ctx.globalAlpha = baseAlpha;
         }
 
         // core: coloured body with a hot centre, so it looks lit from within
@@ -1406,13 +1746,18 @@
         if (isBrain) {
           // inner "neuron" specks orbiting the core — reads as a living brain,
           // not just a plain sphere; also flickers faster while thinking.
-          var speckCount = 10, speed = thinking ? 2.2 : 0.6;
+          // With animations off the specks still render but freeze at a
+          // deterministic phase per slot, so the brain still looks textured.
+          var speckCount = 10;
+          var speed = thinking ? 2.2 : 0.6;
           for (var sk = 0; sk < speckCount; sk++) {
-            var phase = now / 1000 * speed + sk * (Math.PI * 2 / speckCount);
+            var phase = neuralPrefs.showAnimations
+              ? now / 1000 * speed + sk * (Math.PI * 2 / speckCount)
+              : sk * (Math.PI * 2 / speckCount);
             var sx3 = Math.cos(phase) * r * 0.55, sy3 = Math.sin(phase * 1.3) * r * 0.4, sz3 = Math.sin(phase) * r * 0.55;
             var w3 = rotate(sx3, sy3, sz3);
             var sxp = p.sx + w3[0] * p.scale * 0.5, syp = p.sy + w3[1] * p.scale * 0.5;
-            ctx.globalAlpha = 0.5 + 0.5 * Math.sin(phase * 2);
+            ctx.globalAlpha = neuralPrefs.showAnimations ? 0.5 + 0.5 * Math.sin(phase * 2) : 0.7;
             ctx.fillStyle = "#bfe0ff";
             ctx.beginPath(); ctx.arc(sxp, syp, 1.6, 0, Math.PI * 2); ctx.fill();
           }
@@ -1440,12 +1785,17 @@
         // of a near one's, which is how "Rust ownership model" ended up
         // printed through "TypeScript generics".
         if (isBrain || p.scale > 0.5 || nd === hoverNode || nd === selectedNode) {
-          labelQueue.push({
-            text: nd.label, x: p.sx, y: p.sy - r - 7,
-            size: 11 * Math.min(1.3, p.scale * 1.1),
-            alpha: dim ? 0.15 : 0.85,
-            priority: (nd === hoverNode || nd === selectedNode || isBrain) ? 99 : p.scale,
-          });
+          // Labels are gated by the Layout Options "Show node labels" toggle.
+          // Hover/selected labels still come through even when labels are off
+          // — otherwise the user can't tell what they're about to click on.
+          if (neuralPrefs.showLabels || nd === hoverNode || nd === selectedNode) {
+            labelQueue.push({
+              text: nd.label, x: p.sx, y: p.sy - r - 7,
+              size: 11 * Math.min(1.3, p.scale * 1.1),
+              alpha: dim ? 0.15 : 0.85,
+              priority: (nd === hoverNode || nd === selectedNode || isBrain) ? 99 : p.scale,
+            });
+          }
         }
         ctx.globalAlpha = 1;
       }
@@ -1453,53 +1803,65 @@
       // Labels last, nearest first, dropping any that would overlap one
       // already placed — a readable subset beats a complete but unreadable
       // pile.
-      labelQueue.sort(function (a, b) { return b.priority - a.priority; });
-      ctx.textAlign = "center";
-      var placed = [];
-      for (var li = 0; li < labelQueue.length; li++) {
-        var lab = labelQueue[li];
-        ctx.font = lab.size + "px -apple-system, Segoe UI, system-ui, sans-serif";
-        var halfW = ctx.measureText(lab.text).width / 2 + 3;
-        var halfH = lab.size * 0.75;
-        // keep the whole label inside the panel — centred text on a node near
-        // the edge used to run off and get cut in half
-        lab.x = Math.min(W - halfW - 4, Math.max(halfW + 4, lab.x));
-        var box = { l: lab.x - halfW, r: lab.x + halfW, t: lab.y - halfH, b: lab.y + halfH * 0.4 };
-        var collides = false;
-        for (var pj = 0; pj < placed.length; pj++) {
-          var q = placed[pj];
-          if (box.l < q.r && box.r > q.l && box.t < q.b && box.b > q.t) { collides = true; break; }
+      if (neuralPrefs.showLabels) {
+        labelQueue.sort(function (a, b) { return b.priority - a.priority; });
+        ctx.textAlign = "center";
+        var placed = [];
+        for (var li = 0; li < labelQueue.length; li++) {
+          var lab = labelQueue[li];
+          ctx.font = lab.size + "px -apple-system, Segoe UI, system-ui, sans-serif";
+          var halfW = ctx.measureText(lab.text).width / 2 + 3;
+          var halfH = lab.size * 0.75;
+          // keep the whole label inside the panel — centred text on a node near
+          // the edge used to run off and get cut in half
+          lab.x = Math.min(W - halfW - 4, Math.max(halfW + 4, lab.x));
+          var box = { l: lab.x - halfW, r: lab.x + halfW, t: lab.y - halfH, b: lab.y + halfH * 0.4 };
+          var collides = false;
+          for (var pj = 0; pj < placed.length; pj++) {
+            var q = placed[pj];
+            if (box.l < q.r && box.r > q.l && box.t < q.b && box.b > q.t) { collides = true; break; }
+          }
+          if (collides) continue;
+          placed.push(box);
+          ctx.globalAlpha = lab.alpha;
+          ctx.fillStyle = "rgba(5,6,15,0.55)";
+          ctx.fillText(lab.text, lab.x + 1, lab.y + 1); // faint backing so text survives over a bright edge
+          ctx.fillStyle = "#dfe6ff";
+          ctx.fillText(lab.text, lab.x, lab.y);
         }
-        if (collides) continue;
-        placed.push(box);
-        ctx.globalAlpha = lab.alpha;
-        ctx.fillStyle = "rgba(5,6,15,0.55)";
-        ctx.fillText(lab.text, lab.x + 1, lab.y + 1); // faint backing so text survives over a bright edge
-        ctx.fillStyle = "#dfe6ff";
-        ctx.fillText(lab.text, lab.x, lab.y);
+        ctx.globalAlpha = 1;
       }
-      ctx.globalAlpha = 1;
 
       // electric pulses: jagged flickering bolt traveling from source to target
-      for (var pi = pulses.length - 1; pi >= 0; pi--) {
-        var pu = pulses[pi];
-        var t = (now - pu.start) / pu.dur;
-        if (t >= 1) { pulses.splice(pi, 1); continue; }
-        var from = byId.get(pu.fromId), to = byId.get(pu.toId);
-        if (!from || !to) { pulses.splice(pi, 1); continue; }
-        var pf = project(from.x, from.y, from.z), pt = project(to.x, to.y, to.z);
-        if (!pf || !pt) continue;
-        var fade = Math.sin(Math.PI * Math.min(1, t * 1.1));
-        ctx.globalAlpha = fade;
-        drawElectricSegment(pf, pt, pu.color, 2, 5);
-        // bright traveling head
-        var hx = pf.sx + (pt.sx - pf.sx) * t, hy = pf.sy + (pt.sy - pf.sy) * t;
-        var rad = 7 * Math.max(0.4, (pf.scale + pt.scale) / 2);
-        var pg = ctx.createRadialGradient(hx, hy, 0, hx, hy, rad);
-        pg.addColorStop(0, pu.color); pg.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.fillStyle = pg;
-        ctx.beginPath(); ctx.arc(hx, hy, rad, 0, Math.PI * 2); ctx.fill();
-        ctx.globalAlpha = 1;
+      // Skipped wholesale when animations are off — pulses are time-based, so
+      // there's no static version of them; queuing them anyway would just
+      // produce invisible work every frame. The pulse() caller doesn't fire
+      // them either when the toggle is off (see the gate in flashNode below).
+      if (neuralPrefs.showAnimations) {
+        for (var pi = pulses.length - 1; pi >= 0; pi--) {
+          var pu = pulses[pi];
+          var t = (now - pu.start) / pu.dur;
+          if (t >= 1) { pulses.splice(pi, 1); continue; }
+          var from = byId.get(pu.fromId), to = byId.get(pu.toId);
+          if (!from || !to) { pulses.splice(pi, 1); continue; }
+          var pf = project(from.x, from.y, from.z), pt = project(to.x, to.y, to.z);
+          if (!pf || !pt) continue;
+          var fade = Math.sin(Math.PI * Math.min(1, t * 1.1));
+          ctx.globalAlpha = fade;
+          drawElectricSegment(pf, pt, pu.color, 2, 5);
+          // bright traveling head
+          var hx = pf.sx + (pt.sx - pf.sx) * t, hy = pf.sy + (pt.sy - pf.sy) * t;
+          var rad = 7 * Math.max(0.4, (pf.scale + pt.scale) / 2);
+          var pg = ctx.createRadialGradient(hx, hy, 0, hx, hy, rad);
+          pg.addColorStop(0, pu.color); pg.addColorStop(1, "rgba(0,0,0,0)");
+          ctx.fillStyle = pg;
+          ctx.beginPath(); ctx.arc(hx, hy, rad, 0, Math.PI * 2); ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+      } else {
+        // Don't leak pending pulses across an off→on toggle: drop them so
+        // the moment animations come back, no leftover lightning fires.
+        pulses.length = 0;
       }
     }
 
@@ -1522,6 +1884,11 @@
       ctx.lineWidth = (a.id === COORDINATOR_ID || b.id === COORDINATOR_ID ? 1.5 : 1.1)
         * Math.min(1.6, pa.scale + pb.scale);
       ctx.beginPath(); ctx.moveTo(pa.sx, pa.sy); ctx.lineTo(pb.sx, pb.sy); ctx.stroke();
+
+      // The moving charge along the wire is part of the animations toggle —
+      // skip the sliding dash entirely when animations are off so the wires
+      // sit still. The faint gradient wire above still renders either way.
+      if (!neuralPrefs.showAnimations) return;
 
       // the charge: a short bright dash sliding along the wire
       var speed = 0.16 + (index % 7) * 0.035;
@@ -1606,7 +1973,37 @@
     }
 
     var rafId = null;
-    function loop() { tick(); if (autoFrame) frameGraph(); draw(); rafId = requestAnimationFrame(loop); }
+    // Real-time FPS counter. Count frames in a sliding 1-second window and
+    // re-paint the readout ~4×/sec so the digits don't flicker. Colour bands:
+    //   ≥58 fps → "high"   (green, ~60 fps lock)
+    //   29–57   → "normal" (amber, the default in-between band)
+    //   <29     → "low"    (red, renderer is dropping badly)
+    var fpsFrames = 0;
+    var fpsLastSample = performance.now();
+    var fpsLastPainted = 0;
+    function recordFrame(now) {
+      fpsFrames++;
+      if (now - fpsLastSample >= 1000) {
+        var fps = (fpsFrames * 1000) / (now - fpsLastSample);
+        fpsFrames = 0;
+        fpsLastSample = now;
+        // Throttle DOM writes to ~4 Hz — the readout can't keep up with the
+        // requestAnimationFrame cadence anyway, and rewriting the text node
+        // every frame triggers layout work we don't need.
+        if (now - fpsLastPainted >= 240) {
+          fpsLastPainted = now;
+          fpsEl.textContent = Math.round(fps) + " fps";
+          fpsEl.classList.remove("normal", "high", "low");
+          fpsEl.classList.add(fps >= 58 ? "high" : (fps < 29 ? "low" : "normal"));
+        }
+      }
+    }
+    function loop() {
+      var t = performance.now();
+      tick(); if (autoFrame) frameGraph(); draw();
+      recordFrame(t);
+      rafId = requestAnimationFrame(loop);
+    }
 
     // ---- interaction: drag rotates, shift/right-drag pans, wheel zooms --
     var hoverNode = null, selectedNode = null, dragNode = null, dragNodeDepth = 0;
@@ -1984,7 +2381,13 @@
       }, 1500);
     });
 
-    return { resize: resize };
+    return {
+      resize: resize,
+      getShowLabels: function () { return neuralPrefs.showLabels; },
+      setShowLabels: function (v) { neuralPrefs.showLabels = !!v; saveNeuralPrefs(); },
+      getShowAnimations: function () { return neuralPrefs.showAnimations; },
+      setShowAnimations: function (v) { neuralPrefs.showAnimations = !!v; saveNeuralPrefs(); if (!neuralPrefs.showAnimations) pulses.length = 0; },
+    };
   }
 
   // =====================================================================
@@ -2000,10 +2403,23 @@
   function buildChatView(container) {
     var wrap = document.createElement("div");
     wrap.className = "chat-view";
+    // The phases panel — shown above the conversation, hidden when empty.
+    // The agent's `set_todos` tool drives the contents via WebSocket events.
+    var todosEl = document.createElement("div");
+    todosEl.className = "chat-todos";
+    todosEl.id = "chatTodos";
+    todosEl.innerHTML =
+      "<div class='chat-todos-title'>" +
+        "<span>phases</span>" +
+        "<span class='chat-todos-progress' id='chatTodosProgress'></span>" +
+      "</div>" +
+      // chatTodosList and chatTodosProgress are inner ids the test pins by string.
+      "<ul class='chat-todos-list' id='chatTodosList'></ul>";
     var messagesEl = document.createElement("div");
     messagesEl.className = "chat-messages";
     var inputRow = document.createElement("div");
     inputRow.className = "chat-input-row";
+    inputRow.style.position = "relative";
     inputRow.innerHTML = "<input type='text' id='chatInput' placeholder='Message DariusAI…'><button id='chatSend'>Send</button>";
     // An empty chat used to be a black void with a text box at the bottom,
     // which reads as broken rather than idle. Removed on the first message.
@@ -2015,13 +2431,40 @@
       "<p>Ask for a change and it plans, writes, tests and verifies it — then files what it learned " +
       "into the brain on the left, where you'll watch the node light up.</p>" +
       "<div class='hints'>" +
-      "<span>“add a health endpoint and a test for it”</span>" +
+      "<span>“add a health endpoint and a test for it?”</span>" +
       "<span>“why is the settings panel closing?”</span>" +
       "<span>“what do you already know about SQLite?”</span>" +
       "</div>";
     messagesEl.appendChild(welcome);
 
-    wrap.appendChild(messagesEl); wrap.appendChild(inputRow);
+    wrap.appendChild(todosEl);
+    wrap.appendChild(messagesEl);
+    // Token stats footer — at the very bottom, above the input row.
+    // The chat session publishes a `token_stats` event after every LLM
+    // call; renderStats() updates the readout on each one.
+    var statsEl = document.createElement("div");
+    statsEl.className = "chat-stats";
+    statsEl.id = "chatStats";
+    statsEl.innerHTML =
+      "<span class='chat-stats-tps' id='chatStatsTps'>TPS: —</span>" +
+      "<span class='chat-stats-cnt' id='chatStatsCnt'>ctx: —</span>" +
+      "<span class='chat-stats-spacer'></span>" +
+      "<span class='chat-stats-pct' id='chatStatsPct'>—</span>" +
+      "<button class='chat-compact-btn' id='chatCompactBtn' title='Compact the conversation history to free up context space'>⚡ Compact</button>";
+    wrap.appendChild(statsEl);
+    wrap.appendChild(inputRow);
+    // Slash-command picker — rendered absolutely under the input row
+    // when the user types `/`. Hidden by default.
+    var cmdDropdown = document.createElement("div");
+    cmdDropdown.className = "chat-cmd-dropdown";
+    cmdDropdown.id = "chatCmdDropdown";
+    cmdDropdown.hidden = true;
+    cmdDropdown.style.display = "none";
+    cmdDropdown.innerHTML =
+      "<div class='chat-cmd-tabs' id='chatCmdTabs'></div>" +
+      "<div class='chat-cmd-list' id='chatCmdList'></div>" +
+      "<div class='chat-cmd-hint' id='chatCmdHint'>↑↓ navigate · Enter run · Esc dismiss</div>";
+    inputRow.appendChild(cmdDropdown);
     container.appendChild(wrap);
 
     var messageCount = 0;
@@ -2323,18 +2766,90 @@
     }
 
     var ws = null;
+    // Thinking box: a small collapsible panel that streams the agent's
+    // intermediate work (tool calls, intermediate narration) while a turn
+    // is running. Collapsed by default — the user clicks to expand it,
+    // same shape as Claude Code / Cursor's reasoning panels. When the
+    // final assistant text arrives the box closes and the reply renders
+    // as a normal chat message below it.
+    var thinkingBox = null;
+    function openThinkingBox() {
+      if (thinkingBox && thinkingBox.parentNode) closeThinkingBox();
+      thinkingBox = document.createElement("div");
+      thinkingBox.className = "chat-thinking";
+      thinkingBox.innerHTML =
+        "<div class='chat-thinking-head'>" +
+        "<span class='chat-thinking-icon'>🤭</span>" +
+        "<span class='chat-thinking-label'>thinking…</span>" +
+        "<span class='chat-thinking-count'>0</span>" +
+        "<span class='chat-thinking-toggle'>►</span>" +
+        "</div>" +
+        "<div class='chat-thinking-body'></div>";
+      var head = thinkingBox.querySelector(".chat-thinking-head");
+      head.addEventListener("click", function () {
+        thinkingBox.classList.toggle("open");
+      });
+      messagesEl.appendChild(thinkingBox);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return thinkingBox;
+    }
+    function appendThinkingStep(kind, text) {
+      if (!thinkingBox) openThinkingBox();
+      var body = thinkingBox.querySelector(".chat-thinking-body");
+      var row = document.createElement("div");
+      row.className = "chat-thinking-step chat-step-" + kind;
+      row.textContent = text;
+      body.appendChild(row);
+      var count = thinkingBox.querySelector(".chat-thinking-count");
+      count.textContent = String(body.children.length);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+    function closeThinkingBox() {
+      if (!thinkingBox) return;
+      var label = thinkingBox.querySelector(".chat-thinking-label");
+      if (label) label.textContent = "thought";
+      var icon = thinkingBox.querySelector(".chat-thinking-icon");
+      if (icon) icon.textContent = "✓";
+      thinkingBox.classList.add("done");
+      thinkingBox = null;
+    }
     function connect() {
       var proto = location.protocol === "https:" ? "wss:" : "ws:";
       ws = new WebSocket(proto + "//" + location.host + "/ws/chat");
       ws.onmessage = function (ev) {
         var data;
         try { data = JSON.parse(ev.data); } catch (e) { return; }
-        if (data.type === "error") appendPlain("system", data.message);
-        else if (data.type === "assistant_text") appendMessage("assistant", data.text);
-        else if (data.type === "tool_call_start") appendPlain("tool", "→ " + data.name + "(" + JSON.stringify(data.input) + ")");
-        else if (data.type === "tool_call_result") appendPlain("tool", "← " + String(data.result).slice(0, 300));
+        if (data.type === "error") {
+          closeThinkingBox();
+          appendPlain("system", data.message);
+        } else if (data.type === "assistant_text") {
+          if (data.is_final) {
+            closeThinkingBox();
+            appendMessage("assistant", data.text);
+          } else {
+            appendThinkingStep("text", data.text);
+          }
+        } else if (data.type === "tool_call_start") {
+          appendThinkingStep("tool", "→ " + data.name + "(" + JSON.stringify(data.input) + ")");
+        } else if (data.type === "tool_call_result") {
+          appendThinkingStep("result", "↴ " + String(data.result).slice(0, 300));
+        } else if (data.type === "todos") {
+          renderTodos(data.items || []);
+        } else if (data.type === "token_stats") {
+          renderStats(data);
+        } else if (data.type === "context_compacted") {
+          renderCompactBanner(data);
+        } else if (data.type === "command_result") {
+          cmdOnResult(data);
+        } else if (data.type === "command_picker") {
+          cmdOpenPicker(data);
+        }
       };
-      ws.onclose = function () { appendPlain("system", "connection closed — reconnecting…"); setTimeout(connect, 2000); };
+      ws.onclose = function () {
+        closeThinkingBox();
+        appendPlain("system", "connection closed — reconnecting…");
+        setTimeout(connect, 2000);
+      };
     }
     connect();
 
@@ -2343,11 +2858,669 @@
       var text = input.value.trim();
       if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
       appendMessage("user", text);
+      openThinkingBox();   // open immediately so the user sees agent activity
+      // Reset the phases panel for the new query — the agent will
+      // re-populate it as it figures out the work.
+      renderTodos([]);
+      // Reset the stats footer so a new query doesn't show the previous
+      // turn's cumulative tokens. The agent's first tool call will
+      // start repopulating it via the next token_stats event.
+      document.getElementById("chatStatsTps").textContent = "TPS: —";
+      document.getElementById("chatStatsCnt").textContent = "ctx: —";
+      document.getElementById("chatStatsPct").textContent = "—";
       input.value = "";
+      cmdHide();
+      cmdPicker.dismissed = false;
       ws.send(text);
     }
+
+    // ---- Slash-command picker ---------------------------------------------
+    // The picker is a small dropdown that appears when the chat input
+    // starts with `/`. Up/Down navigate items in the current category;
+    // Left/Right switch category tabs in multi-step pickers (e.g.
+    // /add provider). Enter submits the highlighted item; Esc dismisses.
+    // The picker drives the same `ws` socket as the chat — it sends
+    // typed `{type:"command", name, args, request_id}` messages.
+    var cmdPicker = {
+      active: false,
+      items: [],            // flat list of commands (or category items)
+      allCatalog: [],       // master list of commands for filtering
+      categories: null,     // null for the simple list, [..] for a picker
+      activeCategory: null,
+      highlighted: 0,
+      requestId: null,
+      cmdName: null,        // command name this picker is for
+      selected: {},         // {category_id: picked_value} for multi-step
+      beforeSlash: "",      // input value before the user typed /
+    };
+
+    function cmdHide() {
+      cmdPicker.active = false;
+      cmdDropdown.hidden = true;
+      cmdDropdown.style.display = "none";
+    }
+
+    function cmdRender() {
+      if (!cmdPicker.active) {
+        cmdDropdown.hidden = true;
+        cmdDropdown.style.display = "none";
+        return;
+      }
+      cmdDropdown.hidden = false;
+      var tabsEl = document.getElementById("chatCmdTabs");
+      var listEl = document.getElementById("chatCmdList");
+      var hintEl = document.getElementById("chatCmdHint");
+
+      // Wire mouse event listeners once on containers
+      if (listEl && !listEl._cmdListenersWired) {
+        listEl._cmdListenersWired = true;
+        listEl.addEventListener("mousemove", function (ev) {
+          var item = ev.target.closest(".chat-cmd-item");
+          if (!item) return;
+          var idx = parseInt(item.getAttribute("data-idx"), 10);
+          if (!isNaN(idx) && idx !== cmdPicker.highlighted) {
+            cmdPicker.highlighted = idx;
+            listEl.querySelectorAll(".chat-cmd-item").forEach(function (el, i) {
+              el.classList.toggle("highlighted", i === idx);
+            });
+          }
+        });
+        listEl.addEventListener("click", function (ev) {
+          var item = ev.target.closest(".chat-cmd-item");
+          if (!item) return;
+          var idx = parseInt(item.getAttribute("data-idx"), 10);
+          if (!isNaN(idx)) {
+            cmdPicker.highlighted = idx;
+            cmdRunItem();
+          }
+        });
+      }
+      if (tabsEl && !tabsEl._cmdListenersWired) {
+        tabsEl._cmdListenersWired = true;
+        tabsEl.addEventListener("click", function (ev) {
+          var tab = ev.target.closest(".chat-cmd-tab");
+          if (!tab) return;
+          var catId = tab.getAttribute("data-cat");
+          if (catId && cmdPicker.categories) {
+            cmdPicker.activeCategory = catId;
+            var catObj = cmdPicker.categories.find(function (c) { return c.id === catId; }) || {};
+            cmdPicker.items = catObj.items || [];
+            cmdPicker.allCatalog = cmdPicker.items;
+            cmdPicker.highlighted = 0;
+            cmdRender();
+          }
+        });
+      }
+
+      // Tabs (only when in a multi-step picker)
+      if (cmdPicker.categories && cmdPicker.categories.length > 0) {
+        tabsEl.innerHTML = cmdPicker.categories.map(function (c) {
+          var active = c.id === cmdPicker.activeCategory;
+          return "<span class='chat-cmd-tab" + (active ? " active" : "") +
+                 "' data-cat='" + c.id + "'>" + c.label + "</span>";
+        }).join("");
+        hintEl.textContent = "← → tabs · ↑↓ navigate · Enter select · Esc dismiss";
+      } else {
+        tabsEl.innerHTML = "";
+        hintEl.textContent = "↑↓ navigate · Enter run · Esc dismiss";
+      }
+      // Items
+      var items = cmdPicker.items;
+      if (!items || items.length === 0) {
+        cmdDropdown.hidden = true;
+        cmdDropdown.style.display = "none";
+        return;
+      }
+      cmdDropdown.hidden = false;
+      cmdDropdown.style.display = "flex";
+      if (cmdPicker.highlighted < 0) cmdPicker.highlighted = 0;
+      if (cmdPicker.highlighted >= items.length) cmdPicker.highlighted = items.length - 1;
+      listEl.innerHTML = items.map(function (it, i) {
+        var hi = i === cmdPicker.highlighted;
+        var label = it.label || it.id || it.name || "";
+        var tag = it.group ? "<span class='group-tag'>" + it.group + "</span>" : "";
+        return "<div class='chat-cmd-item" + (hi ? " highlighted" : "") +
+               "' data-idx='" + i + "'>" + label + tag + "</div>";
+      }).join("");
+
+      var hiEl = listEl.querySelector(".chat-cmd-item.highlighted");
+      if (hiEl) {
+        hiEl.scrollIntoView({ block: "nearest" });
+      }
+    }
+
+    function cmdOpenList() {
+      cmdPicker.active = true;
+      cmdPicker.categories = null;
+      cmdPicker.activeCategory = null;
+      cmdPicker.highlighted = 0;
+      cmdPicker.cmdName = null;
+      var catalog = [
+        { label: "help", summary: "List every command", group: "conversation" },
+        { label: "skills", summary: "List skills in the brain", group: "conversation" },
+        { label: "clear", summary: "Clear the chat history", group: "conversation" },
+        { label: "reset", summary: "New ChatSession", group: "conversation" },
+        { label: "compact", summary: "Compress context", group: "conversation" },
+        { label: "exit", summary: "Close the chat session", group: "conversation" },
+        { label: "session", summary: "Show session info", group: "conversation" },
+        { label: "history", summary: "Recent messages", group: "conversation" },
+        { label: "rename", summary: "Rename the session", group: "conversation" },
+        { label: "export", summary: "Export the chat", group: "conversation" },
+        { label: "import", summary: "Import a chat", group: "conversation" },
+        { label: "share", summary: "Share the session", group: "conversation" },
+        { label: "memory", summary: "Show memory entries", group: "memory" },
+        { label: "remember", summary: "Add a memory note", group: "memory" },
+        { label: "search", summary: "Search the brain", group: "memory" },
+        { label: "forget", summary: "Remove a memory entry", group: "memory" },
+        { label: "index", summary: "Reindex the brain", group: "memory" },
+        { label: "consolidate", summary: "Consolidate memory", group: "memory" },
+        { label: "where", summary: "Locate by topic", group: "memory" },
+        { label: "new", summary: "Create a new project", group: "project" },
+        { label: "open", summary: "Open a project", group: "project" },
+        { label: "project", summary: "Show project info", group: "project" },
+        { label: "projects", summary: "List projects", group: "project" },
+        { label: "init", summary: "Init a new project", group: "project" },
+        { label: "scaffold", summary: "Scaffold with a template", group: "project" },
+        { label: "template", summary: "Change template", group: "project" },
+        { label: "build", summary: "Run build", group: "project" },
+        { label: "test", summary: "Run tests", group: "project" },
+        { label: "lint", summary: "Run linter", group: "project" },
+        { label: "format", summary: "Format code", group: "project" },
+        { label: "run", summary: "Run a shell command", group: "project" },
+        { label: "clean", summary: "Clean build artifacts", group: "project" },
+        { label: "install", summary: "Install dependencies", group: "project" },
+        { label: "update", summary: "Update dependencies", group: "project" },
+        { label: "deploy", summary: "Deploy", group: "project" },
+        { label: "provider", summary: "Switch provider", group: "provider" },
+        { label: "providers", summary: "List providers", group: "provider" },
+        { label: "add", summary: "Add a provider (multi-step picker)", group: "provider" },
+        { label: "remove", summary: "Remove a provider", group: "provider" },
+        { label: "model", summary: "Switch model", group: "provider" },
+        { label: "preset", summary: "List preset providers", group: "provider" },
+        { label: "key", summary: "Set API key", group: "provider" },
+        { label: "url", summary: "Set base URL", group: "provider" },
+        { label: "test-provider", summary: "Test a provider", group: "provider" },
+        { label: "default", summary: "Set default provider", group: "provider" },
+        { label: "usage", summary: "Show API usage", group: "provider" },
+        { label: "cost", summary: "Show estimated cost", group: "provider" },
+        { label: "tokens", summary: "Show token usage", group: "provider" },
+        { label: "context", summary: "Show context window", group: "provider" },
+        { label: "agent", summary: "Show agent status", group: "agent" },
+        { label: "agents", summary: "List agents", group: "agent" },
+        { label: "tools", summary: "List tools", group: "agent" },
+        { label: "tool", summary: "Tool details", group: "agent" },
+        { label: "plan", summary: "Enter plan mode", group: "agent" },
+        { label: "act", summary: "Execute plan", group: "agent" },
+        { label: "review", summary: "Review changes", group: "agent" },
+        { label: "fix", summary: "Fix issues", group: "agent" },
+        { label: "interrupt", summary: "Interrupt current", group: "agent" },
+        { label: "cancel", summary: "Cancel current", group: "agent" },
+        { label: "pause", summary: "Pause", group: "agent" },
+        { label: "resume-agent", summary: "Resume", group: "agent" },
+        { label: "approve", summary: "Approve action", group: "agent" },
+        { label: "reject", summary: "Reject action", group: "agent" },
+        { label: "skip", summary: "Skip action", group: "agent" },
+        { label: "retry", summary: "Retry action", group: "agent" },
+        { label: "undo", summary: "Undo last", group: "agent" },
+        { label: "redo", summary: "Redo last", group: "agent" },
+        { label: "git", summary: "git status / subcommand", group: "git" },
+        { label: "commit", summary: "Commit changes", group: "git" },
+        { label: "push", summary: "Push to remote", group: "git" },
+        { label: "pull", summary: "Pull from remote", group: "git" },
+        { label: "branch", summary: "Create branch", group: "git" },
+        { label: "merge", summary: "Merge branch", group: "git" },
+        { label: "rebase", summary: "Rebase", group: "git" },
+        { label: "git-diff", summary: "Show diff", group: "git" },
+        { label: "log", summary: "Show log", group: "git" },
+        { label: "git-status", summary: "Git status", group: "git" },
+        { label: "pr", summary: "Open PR", group: "git" },
+        { label: "worktree", summary: "Worktrees", group: "git" },
+        { label: "stash", summary: "Stash changes", group: "git" },
+        { label: "ls", summary: "List files", group: "files" },
+        { label: "tree", summary: "File tree", group: "files" },
+        { label: "find", summary: "Find files", group: "files" },
+        { label: "grep", summary: "Grep in files", group: "files" },
+        { label: "read", summary: "Read a file", group: "files" },
+        { label: "write", summary: "Write a file", group: "files" },
+        { label: "edit", summary: "Edit a file", group: "files" },
+        { label: "open-file", summary: "Open a file", group: "files" },
+        { label: "cd", summary: "Change directory", group: "files" },
+        { label: "pwd", summary: "Print working dir", group: "files" },
+        { label: "mkdir", summary: "Make directory", group: "files" },
+        { label: "rm", summary: "Remove file/dir", group: "files" },
+        { label: "cp", summary: "Copy", group: "files" },
+        { label: "mv", summary: "Move/rename", group: "files" },
+        { label: "skill", summary: "Skill details", group: "skills" },
+        { label: "invoke", summary: "Invoke a skill", group: "skills" },
+        { label: "create", summary: "Create a skill", group: "skills" },
+        { label: "edit-skill", summary: "Edit a skill", group: "skills" },
+        { label: "delete", summary: "Delete a skill", group: "skills" },
+        { label: "share-skill", summary: "Share a skill", group: "skills" },
+        { label: "import-skill", summary: "Import a skill", group: "skills" },
+        { label: "export-skill", summary: "Export a skill", group: "skills" },
+        { label: "web", summary: "Fetch a URL", group: "web" },
+        { label: "search", summary: "Web search", group: "web" },
+        { label: "browse", summary: "Browse a URL", group: "web" },
+        { label: "fetch", summary: "Fetch content", group: "web" },
+        { label: "youtube", summary: "YouTube transcript", group: "web" },
+        { label: "wiki", summary: "Wikipedia", group: "web" },
+        { label: "github", summary: "GitHub info", group: "web" },
+        { label: "docs", summary: "Fetch docs", group: "web" },
+        { label: "trust", summary: "Trust a path", group: "permissions" },
+        { label: "untrust", summary: "Untrust a path", group: "permissions" },
+        { label: "allow", summary: "Allow a command", group: "permissions" },
+        { label: "deny", summary: "Deny a command", group: "permissions" },
+        { label: "yolo", summary: "Toggle yolo mode", group: "permissions" },
+        { label: "safe", summary: "Toggle safe mode", group: "permissions" },
+        { label: "permissions", summary: "Show permissions", group: "permissions" },
+        { label: "sandbox", summary: "Show sandbox info", group: "permissions" },
+        { label: "settings", summary: "Show settings", group: "settings" },
+        { label: "config", summary: "Set a config value", group: "settings" },
+        { label: "theme", summary: "Change theme", group: "settings" },
+        { label: "reset-settings", summary: "Reset settings", group: "settings" },
+        { label: "clear-cache", summary: "Clear cache", group: "settings" },
+        { label: "cache", summary: "Show cache", group: "settings" },
+        { label: "layout", summary: "Change layout", group: "settings" },
+        { label: "font", summary: "Change font", group: "settings" },
+        { label: "status", summary: "Show status", group: "status" },
+        { label: "health", summary: "Health check", group: "status" },
+        { label: "logs", summary: "Show logs", group: "status" },
+        { label: "errs", summary: "Show errors", group: "status" },
+        { label: "warns", summary: "Show warnings", group: "status" },
+        { label: "info", summary: "Show info", group: "status" },
+        { label: "debug-cmd", summary: "Debug mode", group: "status" },
+        { label: "metrics", summary: "Show metrics", group: "status" },
+        { label: "mem-status", summary: "Memory status", group: "status" },
+        { label: "voice", summary: "Toggle voice", group: "voice" },
+        { label: "speak", summary: "Speak text", group: "voice" },
+        { label: "stop-voice", summary: "Stop speaking", group: "voice" },
+        { label: "mute", summary: "Mute", group: "voice" },
+        { label: "unmute", summary: "Unmute", group: "voice" },
+        { label: "volume", summary: "Set volume", group: "voice" },
+        { label: "login", summary: "Login", group: "login" },
+        { label: "logout", summary: "Logout", group: "login" },
+        { label: "whoami", summary: "Show current user", group: "login" },
+        { label: "signup", summary: "Sign up", group: "login" },
+        { label: "account", summary: "Show account", group: "login" },
+      ];
+      cmdPicker.allCatalog = catalog;
+      cmdPicker.items = catalog;
+      cmdRender();
+    }
+
+    function cmdOpenPicker(pickerState) {
+      cmdPicker.active = true;
+      cmdPicker.categories = pickerState.categories || [];
+      cmdPicker.activeCategory = pickerState.active || (cmdPicker.categories[0] && cmdPicker.categories[0].id) || null;
+      cmdPicker.highlighted = 0;
+      cmdPicker.requestId = pickerState.request_id || pickerState.requestId || null;
+      cmdPicker.cmdName = pickerState.name || null;
+      cmdPicker.selected = pickerState.selected || {};
+      var catItems = (cmdPicker.categories.find(function (c) {
+        return c.id === cmdPicker.activeCategory;
+      }) || {}).items || [];
+      cmdPicker.allCatalog = catItems;
+      cmdPicker.items = catItems;
+      cmdRender();
+    }
+
+    function cmdDismiss() {
+      cmdPicker.active = false;
+      cmdPicker.dismissed = true;
+      cmdDropdown.hidden = true;
+      cmdDropdown.style.display = "none";
+      var input = document.getElementById("chatInput");
+      if (input && input.value.charAt(0) === "/") {
+        input.value = "";
+      }
+    }
+
+    function cmdRunItem() {
+      var items = cmdPicker.items;
+      if (!items.length) return;
+      var chosen = items[cmdPicker.highlighted];
+      if (!chosen) return;
+      cmdHide();
+      cmdPicker.dismissed = true;
+      var input = document.getElementById("chatInput");
+      var label = (chosen.label || chosen.id || chosen.name || "").toString().trim();
+      if (cmdPicker.categories && cmdPicker.categories.length) {
+        var args = Object.values(cmdPicker.selected || {});
+        args.push(chosen.id);
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({
+          type: "command",
+          name: cmdPicker.cmdName || label,
+          args: args,
+          request_id: cmdPicker.requestId || ("cmd-" + Date.now()),
+        }));
+      } else {
+        if (input) {
+          input.value = "/" + label + " ";
+          input.focus();
+        }
+      }
+    }
+
+    function cmdFilter(input) {
+      var q = (input || "").toLowerCase().replace(/^\//, "");
+      var source = cmdPicker.allCatalog && cmdPicker.allCatalog.length > 0 ? cmdPicker.allCatalog : cmdPicker.items;
+      if (!q) return source;
+      var prefix = [], contains = [];
+      for (var i = 0; i < source.length; i++) {
+        var lbl = (source[i].label || source[i].id || "").toLowerCase();
+        if (lbl.indexOf(q) === 0) prefix.push(source[i]);
+        else if (lbl.indexOf(q) >= 0) contains.push(source[i]);
+      }
+      return prefix.concat(contains);
+    }
+
+    function cmdInputChanged() {
+      var input = document.getElementById("chatInput");
+      var v = input.value;
+      if (v === "") {
+        cmdPicker.dismissed = false;
+        cmdPicker.skillsLoaded = false;
+        cmdHide();
+        return;
+      }
+      if (v.charAt(0) === "/") {
+        if (!cmdPicker.dismissed) {
+          var lower = v.toLowerCase();
+          if ((lower.startsWith("/skill ") || lower.startsWith("/skills ")) && !cmdPicker.skillsLoaded) {
+            cmdPicker.skillsLoaded = true;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "command", name: "skills", args: [], request_id: "cmd-skills-picker" }));
+            }
+          } else if (!cmdPicker.active || !cmdPicker.allCatalog || cmdPicker.allCatalog.length === 0) {
+            cmdOpenList();
+          }
+          cmdPicker.active = true;
+          cmdPicker.items = cmdFilter(v);
+          cmdPicker.highlighted = 0;
+          cmdRender();
+        }
+      } else {
+        cmdPicker.dismissed = false;
+        cmdPicker.skillsLoaded = false;
+        cmdHide();
+      }
+    }
+
+    function cmdKey(ev) {
+      if (ev.key === "ArrowDown") {
+        cmdPicker.highlighted = Math.min(cmdPicker.highlighted + 1, cmdPicker.items.length - 1);
+        cmdRender();
+        ev.preventDefault();
+      } else if (ev.key === "ArrowUp") {
+        cmdPicker.highlighted = Math.max(cmdPicker.highlighted - 1, 0);
+        cmdRender();
+        ev.preventDefault();
+      } else if (ev.key === "ArrowRight" && cmdPicker.categories && cmdPicker.categories.length > 1) {
+        var idx = cmdPicker.categories.findIndex(function (c) { return c.id === cmdPicker.activeCategory; });
+        idx = (idx + 1) % cmdPicker.categories.length;
+        cmdPicker.activeCategory = cmdPicker.categories[idx].id;
+        var catItems = cmdPicker.categories[idx].items || [];
+        cmdPicker.allCatalog = catItems;
+        cmdPicker.items = catItems;
+        cmdPicker.highlighted = 0;
+        cmdRender();
+        ev.preventDefault();
+      } else if (ev.key === "ArrowLeft" && cmdPicker.categories && cmdPicker.categories.length > 1) {
+        var idxL = cmdPicker.categories.findIndex(function (c) { return c.id === cmdPicker.activeCategory; });
+        idxL = (idxL - 1 + cmdPicker.categories.length) % cmdPicker.categories.length;
+        cmdPicker.activeCategory = cmdPicker.categories[idxL].id;
+        var catItemsL = cmdPicker.categories[idxL].items || [];
+        cmdPicker.allCatalog = catItemsL;
+        cmdPicker.items = catItemsL;
+        cmdPicker.highlighted = 0;
+        cmdRender();
+        ev.preventDefault();
+      } else if (ev.key === "Enter") {
+        cmdRunItem();
+        ev.preventDefault();
+      } else if (ev.key === "Escape" || ev.key === "Esc") {
+        cmdDismiss();
+        ev.preventDefault();
+      }
+    }
+
+    // Global Esc key & Click-outside listeners
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape" || ev.key === "Esc") {
+        cmdDismiss();
+      }
+    });
+
+    document.addEventListener("mousedown", function (ev) {
+      if (cmdPicker.active) {
+        var dropdown = document.getElementById("chatCmdDropdown");
+        var input = document.getElementById("chatInput");
+        if (dropdown && !dropdown.contains(ev.target) && ev.target !== input) {
+          cmdDismiss();
+        }
+      }
+    });
+
+    function cmdMaybeOpen(ev) {
+      // Called on the input's keydown. Opens the picker when the user
+      // types `/` at the start of (or after whitespace in) the input.
+      var input = document.getElementById("chatInput");
+      var v = input.value;
+      var caret = input.selectionStart || 0;
+      if (ev.key === "/" && caret === 0 && v === "") {
+        cmdPicker.beforeSlash = "";
+        cmdOpenList();
+      }
+    }
+
+    function cmdOnResult(data) {
+      var status = data.status || "ok";
+      var msg = data.message || "";
+      var text = (status === "ok" ? "🟢 " : "🔴 ") + msg;
+      // If the result has a list UI, render it as a small panel.
+      if (data.ui && data.ui.kind === "list" && Array.isArray(data.ui.items)) {
+        var items = data.ui.items;
+        items.sort(function (a, b) {
+          var la = (a.label || a.id || "").toLowerCase();
+          var lb = (b.label || b.id || "").toLowerCase();
+          return la.localeCompare(lb);
+        });
+        if (cmdPicker.skillsLoaded || data.request_id === "cmd-skills-picker") {
+          cmdPicker.allCatalog = items;
+          var input = document.getElementById("chatInput");
+          var v = input ? input.value : "";
+          cmdPicker.items = cmdFilter(v);
+          cmdPicker.active = true;
+          cmdRender();
+        }
+        var lines = items.slice(0, 50).map(function (it) {
+          var lbl = it.label || it.id || it.name || "";
+          var grp = it.group ? "  [" + it.group + "]" : "";
+          return "  " + lbl + grp;
+        }).join("\n");
+        if (items.length > 50) lines += "\n  … (" + (items.length - 50) + " more)";
+        text += "\n" + lines;
+      }
+      appendPlain("system", text);
+      // Handle side-effects.
+      if (data.side_effect) {
+        cmdApplySideEffect(data.side_effect);
+      }
+    }
+
+    function cmdApplySideEffect(eff) {
+      if (!eff) return;
+      if (eff.clear_chat) {
+        // Wipe the messages DOM. Keep the brain.
+        var msgs = document.getElementById("chatMessages");
+        if (msgs) {
+          var welcome = msgs.querySelector(".chat-welcome");
+          // Remove all children except the welcome block.
+          while (msgs.firstChild) msgs.removeChild(msgs.firstChild);
+          if (welcome) msgs.appendChild(welcome);
+        }
+      }
+      if (eff.reset_session) {
+        // Server already swapped the session; just clear the chat DOM.
+        cmdApplySideEffect({ clear_chat: true });
+      }
+      if (eff.compact) {
+        // Already-rounded compensation: the server fires the compact
+        // work on demand from the WS handler. Nothing to do here.
+      }
+      if (eff.reload_llm) {
+        // The server has already updated app.state.llm. The next
+        // session.send will pick it up. Nothing to do here.
+      }
+      if (eff.exit) {
+        // Server-side asked to close the chat. Show a banner; the WS
+        // is closed by the server after this message.
+        appendPlain("system", "Session closed.");
+      }
+    }
+
+    // Render the token stats footer from the chat session's
+    // `token_stats` event. Format:
+    //   TPS: 12.4 · 4,567 / 200,000 tok (97.7% left)
+    // The percentage is color-coded: green >50%, amber 50-15%, red <15%.
+    // When the current call's input is larger than the model window
+    // (shouldn't happen — the API rejects oversized prompts — but
+    // the gauge could still go negative if the model's reported
+    // window is wrong), don't show a negative percentage; show
+    // "X% over" instead and keep the danger class.
+    function renderStats(data) {
+      var tpsEl = document.getElementById("chatStatsTps");
+      var cntEl = document.getElementById("chatStatsCnt");
+      var pctEl = document.getElementById("chatStatsPct");
+      if (!tpsEl || !cntEl || !pctEl) return;
+      var tps = Math.round((data.tps || 0) * 10) / 10;
+      // Use the LATEST call's input + output, not the cumulative sum
+      // across the whole session — the cumulative ran past the window
+      // on long conversations and made the percentage negative.
+      var used = data.current_total != null ? data.current_total : (data.cumulative_total || 0);
+      var window = data.context_window || 0;
+      var tpsText = "TPS: " + (tps > 0 ? tps.toFixed(1) : "—");
+      var cntText = window
+        ? "ctx: " + used.toLocaleString() + " / " + window.toLocaleString() + " tok"
+        : "ctx: " + used.toLocaleString() + " tok";
+      tpsEl.textContent = tpsText;
+      cntEl.textContent = cntText;
+      pctEl.classList.remove("warn", "danger");
+      if (window > 0) {
+        var pctLeft = (1 - used / window) * 100;
+        if (pctLeft < 0) {
+          // The model must be reporting a smaller window than the
+          // prompt actually used. Show the overflow as a positive
+          // percentage and keep the danger class.
+          var over = Math.round((-pctLeft) * 10) / 10;
+          pctEl.textContent = over + "% over";
+          pctEl.classList.add("danger");
+        } else {
+          var roundedLeft = Math.round(pctLeft * 10) / 10;
+          pctEl.textContent = roundedLeft + "% left";
+          if (pctLeft < 15) pctEl.classList.add("danger");
+          else if (pctLeft < 50) pctEl.classList.add("warn");
+        }
+      } else {
+        pctEl.textContent = "—";
+      }
+    }
+
+    // Render the "⚡ Context Compacted: 154,200 → 14,100 tok (-90.8%)"
+    // banner above the chat messages after a `context_compacted` event.
+    // The banner auto-dismisses after 6 seconds — long enough to read,
+    // short enough that an auto-compaction loop doesn't pile them up.
+    function renderCompactBanner(data) {
+      if (!data || data.status !== "ok") return;
+      var oldTok = data.old_tokens || 0;
+      var newTok = data.new_tokens || 0;
+      var saved = data.saved_tokens || 0;
+      var pct = oldTok > 0 ? Math.round((saved / oldTok) * 1000) / 10 : 0;
+      var banner = document.createElement("div");
+      banner.className = "chat-compact-banner";
+      banner.innerHTML =
+        "<span>⚡ Context Compacted</span>" +
+        "<span class='arrow'>" + oldTok.toLocaleString() + " → " + newTok.toLocaleString() + " tok</span>" +
+        "<span class='pct'>−" + pct + "%</span>";
+      // Insert above the chat messages, just below the todos panel.
+      var messages = document.getElementById("chatMessages");
+      var anchor = document.getElementById("chatTodos");
+      if (messages && anchor && anchor.parentNode) {
+        anchor.parentNode.insertBefore(banner, anchor.nextSibling);
+      } else if (messages) {
+        messages.insertBefore(banner, messages.firstChild);
+      } else {
+        document.body.appendChild(banner);
+      }
+      setTimeout(function () { banner.remove(); }, 6000);
+    }
+
+    // Wire the [⚡ Compact] button. Sends `{"type":"compact"}` over the
+    // chat socket; the server replies with a `context_compacted` event
+    // that renderCompactBanner() turns into the toast.
+    var compactBtn = document.getElementById("chatCompactBtn");
+    if (compactBtn) {
+      compactBtn.addEventListener("click", function () {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        compactBtn.disabled = true;
+        ws.send(JSON.stringify({ type: "compact" }));
+        setTimeout(function () { compactBtn.disabled = false; }, 1500);
+      });
+    }
+
+    // Render the phases panel from the agent's `set_todos` tool output.
+    // Visual states match the convention used elsewhere (green check for
+    // done, blue dot for in_progress, empty circle for pending).
+    function renderTodos(items) {
+      var list = document.getElementById("chatTodosList");
+      var prog = document.getElementById("chatTodosProgress");
+      var panel = document.getElementById("chatTodos");
+      if (!list || !panel) return;
+      list.innerHTML = "";
+      var done = 0;
+      items.forEach(function (it) {
+        var li = document.createElement("li");
+        li.className = "chat-todo " + (it.status || "pending");
+        var icon = document.createElement("span");
+        icon.className = "chat-todo-icon";
+        icon.textContent =
+          it.status === "done" ? "✓" :
+          it.status === "in_progress" ? "●" : "○";
+        var title = document.createElement("span");
+        title.className = "chat-todo-title";
+        title.textContent = it.title || "";
+        li.appendChild(icon);
+        li.appendChild(title);
+        list.appendChild(li);
+        if (it.status === "done") done++;
+      });
+      if (items.length) {
+        panel.classList.add("has-items");
+        prog.textContent = done + " / " + items.length;
+      } else {
+        panel.classList.remove("has-items");
+        prog.textContent = "";
+      }
+    }
+
     wrap.querySelector("#chatSend").addEventListener("click", send);
-    wrap.querySelector("#chatInput").addEventListener("keydown", function (ev) { if (ev.key === "Enter") send(); });
+    var chatInputEl = wrap.querySelector("#chatInput");
+    chatInputEl.addEventListener("keydown", function (ev) {
+      // Picker intercepts the four arrow keys + Enter + Esc while it's
+      // open. Everything else falls through to normal typing.
+      if (cmdPicker.active) {
+        cmdKey(ev);
+        return;
+      }
+      cmdMaybeOpen(ev);
+      if (ev.key === "Enter") send();
+    });
+    chatInputEl.addEventListener("input", cmdInputChanged);
+    // After the picker drops a command_result, the client may need to
+    // refresh the chat (clear / reset / new) or open a modal. The
+    // command handler runs through the regular ws.onmessage router
+    // via the new "command_result" type — see below.
 
     return { input: wrap.querySelector("#chatInput") };
   }
@@ -2724,15 +3897,35 @@
         var parent = data.path.split("/").slice(0, -1).join("/");
         var up = document.createElement("div");
         up.className = "file-row";
-        up.textContent = ".. (" + (parent || "root") + ")";
+        // Same icon-column shape as the entries so the row aligns with them.
+        var upIcon = document.createElement("span");
+        upIcon.className = "ft-icon";
+        upIcon.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M9 3 L5 7 L9 11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        var upName = document.createElement("span");
+        upName.className = "ft-name";
+        upName.textContent = ".. (" + (parent || "root") + ")";
+        up.appendChild(upIcon);
+        up.appendChild(upName);
         up.addEventListener("click", function () { loadFileTree(parent); });
         tree.appendChild(up);
       }
       data.entries.forEach(function (e) {
         var row = document.createElement("div");
-        row.className = "file-row";
+        row.className = "file-row" + (e.is_dir ? " dir" : "");
         row.dataset.path = e.path;
-        row.textContent = (e.is_dir ? "📁 " : "📄 ") + e.name;
+        // Folder / file glyph. Inline SVG keeps the leading column a real
+        // icon on systems without color-emoji fonts (WebView2 falls back to
+        // a font that doesn't carry 📁 / 📄, leaving a small box).
+        var icon = document.createElement("span");
+        icon.className = "ft-icon";
+        icon.innerHTML = e.is_dir
+          ? '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1.5 3.5 h4 l1.4 1.6 h5.6 V11 a.7 .7 0 0 1 -.7 .7 H1.5 a.7 .7 0 0 1 -.7 -.7 V4.2 a.7 .7 0 0 1 .7 -.7 z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>'
+          : '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1.5 h5.5 l2.5 2.5 V12.5 a.7 .7 0 0 1 -.7 .7 H3 a.7 .7 0 0 1 -.7 -.7 V2.2 a.7 .7 0 0 1 .7 -.7 z M8.5 1.5 V4 H11" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>';
+        var name = document.createElement("span");
+        name.className = "ft-name";
+        name.textContent = e.name;
+        row.appendChild(icon);
+        row.appendChild(name);
         row.addEventListener("click", function () { if (e.is_dir) loadFileTree(e.path); else openFile(e.path); });
         row.addEventListener("contextmenu", function (ev) {
           ev.preventDefault(); ev.stopPropagation();
@@ -2817,6 +4010,8 @@
       renderSettingsModal(box);
     } else if (name === "newproject") {
       renderNewProjectModal(box);
+    } else if (name === "layout-options") {
+      renderLayoutOptionsModal(box);
     } else {
       box.removeAttribute("style");
       box.innerHTML = MODALS[name]();
@@ -3069,6 +4264,50 @@
     });
   }
 
+  // ---- Layout Options: panel reset + 3D-scene rendering toggles --------
+  // Lives under Settings → Layout Options… and replaces the old single-action
+  // "Reset Window Layout" entry. The two 3D-scene toggles (labels and the
+  // energy-ball animations) are routed through window.__neural, exposed by
+  // buildNeuralView. Reset Layout is the same escape hatch it used to be.
+  function renderLayoutOptionsModal(box) {
+    box.innerHTML =
+      "<h3>Layout Options</h3>" +
+      "<div class='body' style='font-size:12px;color:#8b93b8'>Tweak the 3D scene and restore the default panel arrangement.</div>" +
+      "<label class='layout-opt-row'>" +
+        "<input type='checkbox' id='optShowLabels' " + (window.__neural && window.__neural.getShowLabels() ? "checked" : "") + ">" +
+        "<div><span class='lbl'>Show node labels in 3D scene</span>" +
+        "<span class='desc'>When off, node names are hidden — only the glowing cores and edges remain. Useful for a clean overview.</span></div>" +
+      "</label>" +
+      "<label class='layout-opt-row'>" +
+        "<input type='checkbox' id='optShowAnimations' " + (window.__neural && window.__neural.getShowAnimations() ? "checked" : "") + ">" +
+        "<div><span class='lbl'>Show node animations</span>" +
+        "<span class='desc'>Toggle the moving 'balls of energy' — orbiting electrons, brain pulse halo, traveling edge pulses, live-wire charges. Off = static rendering.</span></div>" +
+      "</label>" +
+      "<div class='layout-opt-actions'>" +
+        "<button class='danger' id='optReset'>Reset Layout…</button>" +
+        "<button data-close>Close</button>" +
+      "</div>";
+    box.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
+
+    // Reset Layout: ask first (the existing resetLayout() drops everything),
+    // and remember the click target — confirm() blocks the JS thread so by
+    // the time we return, the original button reference may have detached.
+    box.querySelector("#optReset").addEventListener("click", function () {
+      if (!confirm("Reset the panel layout to its default? Pop-outs close and any custom arrangement is lost.")) return;
+      WM.resetLayout();
+      closeModal();
+    });
+
+    var labels = box.querySelector("#optShowLabels");
+    labels.addEventListener("change", function () {
+      if (window.__neural) window.__neural.setShowLabels(labels.checked);
+    });
+    var anims = box.querySelector("#optShowAnimations");
+    anims.addEventListener("change", function () {
+      if (window.__neural) window.__neural.setShowAnimations(anims.checked);
+    });
+  }
+
   function renderSettingsBody(projectDir, providers, startWithWindows) {
     var body = document.getElementById("settingsBody");
     if (!body) return; // modal closed before the fetch resolved
@@ -3107,7 +4346,16 @@
       "<input type='checkbox' id='startWithWindowsCheck'" + (startWithWindows.enabled ? " checked" : "") + "> " +
       "Start DariusAI when Windows starts</label>";
 
-    html += "<h4>Shortcuts</h4>" +
+    html += "<h4>External Skills</h4>" +
+      "<div style='font-size:11.5px;color:#8b93b8;margin-bottom:7px'>" +
+      "Drop skills from other agents into the <code>external_skills/</code> folder " +
+      "(see <code>external_skills/README.md</code>) and hit Import to fold them " +
+      "into the brain. Each agent folder becomes its own branch." +
+      "</div>" +
+      "<button id='importExternalBtn'>Import external skills</button>" +
+      "<div id='externalImportResult' style='font-size:11px;color:#6ee7b7;margin-top:6px'></div>" +
+
+      "<h4>Shortcuts</h4>" +
       "<div style='font-size:11.5px;color:#8b93b8;margin-bottom:7px'>" +
       "Puts DariusAI (with the brain icon, not Python's) on your desktop and in the Start Menu. " +
       "Pin <i>that</i> shortcut to the taskbar to keep the icon there too.</div>" +
@@ -3137,7 +4385,7 @@
     });
     document.getElementById("addProviderBtn").addEventListener("click", function () { showProviderForm(null); });
 
-    document.getElementById("installShortcutsBtn").addEventListener("click", function (ev) {
+        document.getElementById("installShortcutsBtn").addEventListener("click", function (ev) {
       var out = document.getElementById("shortcutsResult");
       ev.target.disabled = true;
       out.style.color = "#6ee7b7";
@@ -3152,6 +4400,35 @@
         out.textContent = e.message;
       }).finally(function () { ev.target.disabled = false; });
     });
+
+    // External skills import: scan the external_skills/ folder and fold
+    // every SKILL.md into the brain. New nodes appear on the next graph
+    // fetch, and the brain visibly grows as the import count climbs.
+    var importBtn = document.getElementById("importExternalBtn");
+    if (importBtn) {
+      importBtn.addEventListener("click", function (ev) {
+        var out = document.getElementById("externalImportResult");
+        ev.target.disabled = true;
+        out.style.color = "#6ee7b7";
+        out.textContent = "scanning external_skills/…";
+        fetch("/api/import-external", { method: "POST" }).then(function (r) {
+          if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || ("HTTP " + r.status)); });
+          return r.json();
+        }).then(function (data) {
+          var msg = "imported " + data.imported + " skill(s)";
+          if (data.agents && data.agents.length) {
+            msg += " from " + data.agents.join(", ");
+          }
+          if (data.skipped) {
+            msg += " (skipped " + data.skipped + ")";
+          }
+          out.textContent = msg;
+        }).catch(function (e) {
+          out.style.color = "#f87171";
+          out.textContent = e.message;
+        }).finally(function () { ev.target.disabled = false; });
+      });
+    }
 
     document.getElementById("startWithWindowsCheck").addEventListener("change", function (ev) {
       fetch("/api/start-with-windows", {
@@ -3406,7 +4683,7 @@
           .catch(function () { alert("Could not open that folder."); });
       }
     },
-    "reset-layout": function () { WM.resetLayout(); },
+    "show-layout-options": function () { openModal("layout-options"); },
     "exit": quitApp,
     "undo": function () { if (activeCM) activeCM.undo(); },
     "redo": function () { if (activeCM) activeCM.redo(); },
@@ -3471,7 +4748,9 @@
     // pywebview's js_api bridge returns a Promise for every exposed method.
     desktopApi.toggle_maximize().then(function (isMaximized) {
       var btn = document.getElementById("btnMaximize");
-      btn.textContent = isMaximized ? "❐" : "▢";
+      // The maximize/restore affordance is an inline SVG. Toggling textContent
+      // would wipe it; instead swap a class and let CSS pick which one shows.
+      btn.classList.toggle("maximized", isMaximized);
       btn.title = isMaximized ? "Restore" : "Maximize";
     });
   }
@@ -3504,6 +4783,10 @@
   var chatApi = buildChatView(chatHost);
   var editorApi = buildEditorView(editorHost);
   window.__editor = editorApi;
+  // Expose the neural API on the window so the Layout Options modal can
+  // reach the label/animation toggles without an explicit dependency on the
+  // buildNeuralView closure.
+  window.__neural = neuralApi;
 
   window.addEventListener("resize", function () { neuralApi.resize(); });
 })();

@@ -279,3 +279,85 @@ def import_skills(store: BrainStore, root: Path | str = DEFAULT_OMNI_SKILLS) -> 
         "by_category": by_category,
         "skills": imported,
     }
+
+
+DEFAULT_EXTERNAL_DIR = Path(__file__).resolve().parents[3] / "external_skills"
+EXTERNAL_ID_PREFIX = "extsk-"
+
+
+def import_external(store: BrainStore, root: Path | str | None = None) -> dict[str, Any]:
+    """Import skills from a folder the user drops external skills into.
+
+    Layout (both supported, see `external_skills/README.md`):
+      - grouped:  `<root>/<agent>/<skill>/SKILL.md`
+      - flat:     `<root>/<skill>/SKILL.md`
+
+    Each agent folder becomes a branch node in the brain (`extsk-group-<agent>`),
+    so all skills from one agent hang off a single labelled node rather than
+    adding another 50 spokes around the centre. The skill's own category is
+    read from the frontmatter when present, otherwise `external`.
+
+    Re-running is safe: ids are derived from the agent + skill name, so an
+    import overwrites its own previous rows instead of duplicating them.
+    """
+    root = Path(root) if root else DEFAULT_EXTERNAL_DIR
+    if not root.is_dir():
+        raise FileNotFoundError(f"no external skills directory at {root}")
+
+    imported: list[dict[str, Any]] = []
+    skipped: list[str] = []
+    branches: set[str] = set()
+    by_agent: dict[str, int] = {}
+
+    for path in iter_skill_files(root):
+        skill = parse_skill_file(path)
+        if skill is None:
+            skipped.append(str(path))
+            continue
+        # The relative path inside the external root tells us which agent
+        # (if any) this skill belongs to. `<agent>/<skill>/SKILL.md` -> agent
+        # is the parent-of-parent. `<skill>/SKILL.md` -> flat, no agent.
+        rel = path.parent.relative_to(root)
+        if len(rel.parts) >= 2:
+            agent = rel.parts[0]
+            skill_name = path.parent.name
+        else:
+            agent = None
+            skill_name = path.parent.name
+
+        skill.id = EXTERNAL_ID_PREFIX + ((agent + "-") if agent else "") + skill_name
+        skill.tool_generated = "external-import"
+        tags = [t for t in skill.tags if t != "omni"]  # `omni` is wrong here
+        extra = ["external"]
+        if agent:
+            extra.append(agent)
+        skill.tags = sorted(set(tags + extra))
+
+        if agent:
+            branch_id = "extsk-group-" + agent
+            if branch_id not in branches:
+                store.ensure_branch(branch_id, agent, "skillset",
+                                    f"External skills imported from {agent}")
+                branches.add(branch_id)
+            skill.category = agent         # give it the agent's colour in the viz
+            skill.related = [branch_id]
+        elif not skill.category or skill.category == "skill":
+            skill.category = "external"
+
+        store.add_skill(skill)
+        imported.append({
+            "id": skill.id, "title": skill.title, "category": skill.category,
+            "agent": agent or "", "path": str(path),
+        })
+        if agent:
+            by_agent[agent] = by_agent.get(agent, 0) + 1
+
+    return {
+        "source": str(root),
+        "imported": len(imported),
+        "skipped": len(skipped),
+        "agents": sorted(by_agent.keys()),
+        "branches": sorted(branches),
+        "by_agent": by_agent,
+        "skills": imported,
+    }

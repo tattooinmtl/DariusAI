@@ -23,7 +23,9 @@ def test_chat_simple_reply(tmp_path):
     with client.websocket_connect("/ws/chat") as ws:
         ws.send_text("hi")
         msg = ws.receive_json()
-        assert msg == {"type": "assistant_text", "text": "hello back"}
+        # Final reply carries `is_final: True` so the chat UI closes its
+        # thinking box and renders this as the actual answer.
+        assert msg == {"type": "assistant_text", "text": "hello back", "is_final": True}
 
 
 def test_chat_streams_tool_activity(tmp_path):

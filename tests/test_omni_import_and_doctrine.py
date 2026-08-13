@@ -242,14 +242,23 @@ def test_the_whole_library_is_shipped_and_imports():
     """The 08-09 near-miss was a .gitignore rule that silently staged 0 of 65
     SKILL.md, which would have shipped a harness with an empty brain. Count the
     files on disk and the nodes they become, so that fails loudly here instead
-    of on a user's fresh install."""
+    of on a user's fresh install.
+
+    The 2026-08-12 cleanup (Session-10) pruned 54 skills:
+    33 flat duplicates that invoke_skill() couldn't reach, and 21
+    external-tool skills (cmux, herdr, fable, codex, corral, etc.)
+    that reference tools not in the Dariu harness. The lower bound
+    was 99 before the cleanup; now it's 92 (14 superpowers + 78
+    domain). The assertion is `>= 92` so a future drift below the
+    curated floor still fails loudly, but the intentional prune
+    isn't flagged as a regression."""
     from dariusai.brain.omni_import import import_addon, iter_skill_files
     from dariusai.brain.store import BrainStore
     import tempfile
 
     root = _addon_root()
     on_disk = len(list(iter_skill_files(root / "skills")))
-    assert on_disk >= 99, f"skill library shrank: {on_disk} SKILL.md found"
+    assert on_disk >= 92, f"skill library shrank: {on_disk} SKILL.md found"
 
     store = BrainStore(Path(tempfile.mkdtemp()) / "brain")
     result = import_addon(store, root)

@@ -5,6 +5,14 @@ objects. The normalized shape is still API-shaped (a list of
 {"type": "text"|"tool_use", ...} blocks) so it round-trips straight back
 into the next `messages` list unchanged, matching how the real API expects
 multi-turn tool use to be threaded.
+
+Both `AnthropicLLM` and `OpenAILLM` surface token usage + the model's
+context window size so the chat panel can show real-time TPS and
+"X / Y tokens used" against the model's window. The Protocol's
+`complete()` returns `{"content": [...], "stop_reason": str,
+"usage": {input_tokens, output_tokens}, "context_window": int}` —
+`usage` and `context_window` are optional in the Protocol, so test
+stubs that don't bother returning them still typecheck.
 """
 
 from __future__ import annotations
@@ -14,13 +22,32 @@ from typing import Any, Protocol
 
 DEFAULT_MODEL = os.environ.get("DARIUSAI_MODEL", "claude-sonnet-5")
 MAX_TOKENS = int(os.environ.get("DARIUSAI_MAX_TOKENS", "4096"))
+# Anthropic Claude Sonnet 4.5 default context window. Used by the chat
+# panel's "X / Y tokens used" display so the user sees the percentage
+# of the window that's left. Override at the LLM instance if needed.
+DEFAULT_CONTEXT_WINDOW = 200_000
 
 
 class LLM(Protocol):
     def complete(
         self, system: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None
     ) -> dict[str, Any]:
-        """Returns {"content": [block, ...], "stop_reason": str}."""
+        """Returns `{"content": [block, ...], "stop_reason": str,
+        "usage": {"input_tokens": int, "output_tokens": int}?,
+        "context_window": int?}`.
+
+        `usage` and `context_window` are optional — the test stub
+        returns only `content` and `stop_reason`, and the Protocol
+        matches because they're not enforced. Production LLM impls
+        fill both so the chat panel can show real-time stats.
+        """
+        ...
+
+    @property
+    def context_window(self) -> int:
+        """Maximum tokens the model accepts in a single request.
+        Reported alongside `usage` so the panel can compute
+        'X / Y (k% left)' without a separate config pass."""
         ...
 
 
@@ -64,11 +91,15 @@ class AnthropicLLM:
     available there); agent/graph.py's control flow is verified against a
     stub instead."""
 
-    def __init__(self, model: str | None = None, api_key: str | None = None, base_url: str | None = None):
+    context_window: int = DEFAULT_CONTEXT_WINDOW
+
+    def __init__(self, model: str | None = None, api_key: str | None = None, base_url: str | None = None, context_window: int | None = None):
         import anthropic
 
         self.client = anthropic.Anthropic(api_key=api_key, base_url=base_url)
         self.model = model or DEFAULT_MODEL
+        if context_window is not None:
+            self.context_window = context_window
 
     @classmethod
     def from_store(cls, store, model: str | None = None) -> "AnthropicLLM":
@@ -105,5 +136,19 @@ class AnthropicLLM:
                 content.append({"type": "text", "text": block.text})
             elif block.type == "tool_use":
                 content.append({"type": "tool_use", "id": block.id, "name": block.name, "input": block.input})
-        return {"content": content, "stop_reason": resp.stop_reason}
+        # Anthropic returns `usage` with `input_tokens` and
+        # `output_tokens`. We forward both so the chat session can sum
+        # them across a multi-turn call loop.
+        usage = {}
+        if getattr(resp, "usage", None) is not None:
+            usage = {
+                "input_tokens": getattr(resp.usage, "input_tokens", 0) or 0,
+                "output_tokens": getattr(resp.usage, "output_tokens", 0) or 0,
+            }
+        return {
+            "content": content,
+            "stop_reason": resp.stop_reason,
+            "usage": usage,
+            "context_window": self.context_window,
+        }
 

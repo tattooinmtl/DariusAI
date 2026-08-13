@@ -256,6 +256,10 @@ class SnippetIn(BaseModel):
     code: str
 
 
+class ImportExternalIn(BaseModel):
+    source: str | None = None  # defaults to ./external_skills
+
+
 class SettingIn(BaseModel):
     key: str
     value: str
@@ -536,6 +540,22 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
         except OSError as exc:
             raise HTTPException(500, str(exc)) from exc
 
+    @app.post("/api/import-external")
+    def import_external_endpoint(body: ImportExternalIn = ImportExternalIn()):
+        """Scan `external_skills/` and import every SKILL.md into the brain.
+
+        Body is optional: when omitted, the folder location defaults to the
+        project's `external_skills/` (next to the addon tree). The new nodes
+        show up on the next /api/graph fetch and the brain's growth event
+        fires so the viz can animate them in."""
+        from ..brain.omni_import import import_external
+        try:
+            result = import_external(store, body.source)
+        except FileNotFoundError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        bus.publish({"kind": "external_imported", "count": result["imported"]})
+        return result
+
     @app.get("/api/files")
     def list_files(path: str = ""):
         target = _safe_path(app.state.project_dir, path)
@@ -766,7 +786,69 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
         loop = asyncio.get_event_loop()
         try:
             while True:
-                text = await ws.receive_text()
+                raw = await ws.receive_text()
+                # The UI's [⚡ Compact] button (and the auto-compaction
+                # hook) sends `{"type": "compact"}` over the same socket;
+                # intercept it before treating the payload as a user
+                # prompt — running it through `session.send()` would
+                # dump a JSON object into the model's context.
+                parsed: dict[str, Any] | None = None
+                try:
+                    p = json.loads(raw)
+                    if isinstance(p, dict):
+                        parsed = p
+                except (ValueError, TypeError):
+                    # Not JSON, or not a dict — treat as plain user text.
+                    pass
+
+                if isinstance(parsed, dict) and parsed.get("type") == "compact":
+                    result = await asyncio.to_thread(session.compact, force=True)
+                    await ws.send_json({"type": "context_compacted", **result})
+                    continue
+
+                # Slash commands: typed-intercept. The chat input parses
+                # leading `/` and POSTs a typed WS message here or sends raw
+                # text like "/skills" or "/help".
+                is_cmd = False
+                cmd_name = ""
+                cmd_args = []
+                cmd_req_id = ""
+
+                if isinstance(parsed, dict) and parsed.get("type") == "command":
+                    is_cmd = True
+                    cmd_name = str(parsed.get("name", ""))
+                    cmd_args = list(parsed.get("args") or [])
+                    cmd_req_id = str(parsed.get("request_id", ""))
+                elif isinstance(raw, str) and raw.strip().startswith("/"):
+                    parts = raw.strip().split()
+                    if parts:
+                        is_cmd = True
+                        cmd_name = parts[0].lstrip("/")
+                        cmd_args = parts[1:]
+                        import time
+                        cmd_req_id = f"cmd-{int(time.time()*1000)}"
+
+                if is_cmd and cmd_name:
+                    from ..agent.commands import (
+                        CommandContext,
+                        run_command as _run_command,
+                    )
+                    cmd_ctx = CommandContext(
+                        store=store,
+                        app_state=app.state,
+                        request_id=cmd_req_id,
+                        emit_log=lambda ev: ws.send_json(ev),
+                    )
+                    await _run_command(
+                        ctx=cmd_ctx,
+                        name=cmd_name,
+                        args=cmd_args,
+                        request_id=cmd_req_id,
+                        ws_send=ws.send_json,
+                    )
+                    continue
+
+                text = raw
                 queue: asyncio.Queue = asyncio.Queue()
 
                 def on_event(ev: dict[str, Any], queue: asyncio.Queue = queue) -> None:

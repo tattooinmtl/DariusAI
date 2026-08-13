@@ -8,6 +8,7 @@ viz window is looking at.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable
 
 from ..brain.learn import InsufficientResearchError, research, save_learned_skill
@@ -31,6 +32,17 @@ class ToolSpec:
 @dataclass
 class ToolRegistry:
     specs: dict[str, ToolSpec] = field(default_factory=dict)
+    # Event publisher wired in by the consumer (chat session, langgraph
+    # test, etc.). Tools that need to push UI state — like set_todos,
+    # which drives the chat panel's phases panel — call this with a
+    # dict the consumer knows how to forward. None by default; the
+    # tool-side branch checks before firing so calling set_todos in a
+    # unit test (no publisher) is a no-op rather than a crash.
+    on_event: Callable[[dict[str, Any]], None] | None = None
+
+    def publish(self, event: dict[str, Any]) -> None:
+        if self.on_event is not None:
+            self.on_event(event)
 
     def register(self, spec: ToolSpec) -> None:
         self.specs[spec.name] = spec
@@ -228,6 +240,97 @@ def _load_skill(store: BrainStore, skill_id: str) -> str:
     return "\n".join(parts)
 
 
+def _set_todos(reg: ToolRegistry, items: list[dict[str, str]]) -> str:
+    """Update the active query's TodoList — the phases panel under
+    the chat input. The agent calls this at the start of any
+    multi-step task (per the doctrine: "If it has a checklist, create
+    a todo per item") and again as phases move through pending →
+    in_progress → done.
+
+    Each item is `{id, title, status}` where status is one of
+    `pending`, `in_progress`, `done`. The model is expected to keep
+    ids stable across calls so the UI can animate transitions; new
+    items get new ids. The full list is sent each call — partial
+    updates are done by re-sending the whole list with the changed
+    field. Empty list clears the panel.
+    """
+    if not isinstance(items, list):
+        return "ERROR: items must be a list of {id, title, status} objects"
+    valid_status = {"pending", "in_progress", "done"}
+    for it in items:
+        if not isinstance(it, dict):
+            return f"ERROR: each item must be a dict, got {type(it).__name__}"
+        if "id" not in it or "title" not in it or "status" not in it:
+            return f"ERROR: each item needs id, title, status — got {it!r}"
+        if it["status"] not in valid_status:
+            return f"ERROR: status must be one of {valid_status}; got {it['status']!r}"
+    reg.publish({"type": "todos", "items": items})
+    return f"set {len(items)} todo(s)"
+
+
+def _invoke_skill(store: BrainStore, name: str) -> str:
+    """The harness's equivalent of the runtime's `Skill` tool: given a
+    skill name (e.g. 'brainstorming', 'systematic-debugging'), return
+    the full SKILL.md body so the model can follow its checklist.
+
+    Resolves the SKILL.md from `addon/skills/<group>/<name>/SKILL.md`
+    under the current project root — the source-of-truth content.
+    Bypassing the brain for the body is intentional: the model wants
+    the raw SKILL.md, not the parsed-fields view that `load_skill`
+    returns. The brain still indexes the skill for search and the viz.
+
+    Strips any `group:` prefix (e.g. 'superpowers:brainstorming').
+    If the name is ambiguous across groups, lists the matches so the
+    model can disambiguate.
+    """
+    bare = name.split(":", 1)[-1].strip()
+    if not bare:
+        return "ERROR: empty skill name"
+
+    project_root = store.get_setting("project_dir", "")
+    if not project_root:
+        return "ERROR: no project_dir set — open the app once so the brain has a project to work on"
+    root = Path(project_root)
+
+    # Walk the addon tree. We don't know the group folder name up front
+    # (depends on whether the skill was imported from addon/, external_skills/,
+    # or merged with the user's custom folders), so glob both roots.
+    candidates = sorted(root.glob(f"addon/skills/*/{bare}/SKILL.md"))
+    candidates += sorted(root.glob(f"external_skills/*/{bare}/SKILL.md"))
+    if not candidates:
+        return (
+            f"no skill named {bare!r}. Use `browse_brain()` (no argument) for "
+            f"the top-level groups, then call it with a group id to list its skills."
+        )
+    if len(candidates) > 1:
+        names = ", ".join(f"{p.parent.parent.name}/{p.parent.name}" for p in candidates)
+        return f"ambiguous name {bare!r} — found in: {names}. Use the full path."
+    skill_md = candidates[0]
+
+    data = skill_md.read_text(encoding="utf-8")
+    if len(data) > MAX_READ_BYTES:
+        return f"ERROR: {skill_md} is {len(data)} bytes, over the {MAX_READ_BYTES}-byte read limit"
+
+    # Best-effort: increment usage on the matching brain node and
+    # publish a skill_used event so the viz pulses the node. The brain
+    # may not have re-imported this skill yet — that's fine, the file
+    # read is the answer either way.
+    try:
+        hits = store.search(bare, limit=5)
+        for h in hits:
+            if h["label"] == bare:
+                store.touch_usage(h["id"])
+                bus.publish({
+                    "kind": "skill_used", "id": h["id"], "label": h["label"],
+                    "route": COORDINATOR_ID,
+                })
+                break
+    except Exception:
+        pass  # touch_usage is best-effort; the file read is the answer
+
+    return data
+
+
 def _list_projects(store: BrainStore) -> str:
     """The agent's view of the workbench. Without this it can only see the
     one folder it happens to be pointed at, which makes "carry on with the
@@ -304,13 +407,17 @@ def _learn_skill(
     return f"saved skill {skill.id!r} ({len(skill.sources)} sources) into the brain."
 
 
-def build_tool_registry(store: BrainStore, sandbox: Sandbox | None = None) -> ToolRegistry:
+def build_tool_registry(store: BrainStore, sandbox: Sandbox | None = None, on_event: Callable[[dict[str, Any]], None] | None = None) -> ToolRegistry:
     """`sandbox` bounds every filesystem and shell tool. It defaults to
     Sandbox.unrestricted() only so existing callers keep working; every
     production entry point passes a real one rooted at the project
-    directory."""
+    directory. `on_event` is the chat-session's per-call event
+    publisher — tools that push UI state (set_todos) call it. Pass
+    None in unit tests; the tool will still return its result, just
+    without the UI side-effect."""
     sandbox = sandbox or Sandbox.unrestricted()
     reg = ToolRegistry()
+    reg.on_event = on_event
     _register(reg, store, ToolSpec(
         name="read_file",
         description="Read a text file's contents.",
@@ -422,6 +529,49 @@ def build_tool_registry(store: BrainStore, sandbox: Sandbox | None = None) -> To
             "required": ["skill_id"],
         },
         fn=lambda skill_id: _load_skill(store, skill_id),
+    ))
+    _register(reg, store, ToolSpec(
+        name="set_todos",
+        description=(
+            "Update the active query's TodoList panel (the phases list under the chat input). "
+            "Use at the start of any multi-step task with a checklist, and update as phases move "
+            "through pending → in_progress → done. Each item is `{id, title, status}` where status "
+            "is 'pending' | 'in_progress' | 'done'. Send the full list each call; partial updates are "
+            "done by re-sending the whole list with the changed field. Empty list clears the panel. "
+            "Stable ids across calls let the UI animate transitions."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "title": {"type": "string"},
+                            "status": {"type": "string", "enum": ["pending", "in_progress", "done"]},
+                        },
+                        "required": ["id", "title", "status"],
+                    },
+                },
+                "required": ["items"],
+            },
+        },
+        fn=lambda items: _set_todos(reg, items),
+    ))
+    _register(reg, store, ToolSpec(
+        name="invoke_skill",
+        description=(
+            "Load a skill by name (e.g. 'brainstorming', 'systematic-debugging') and return its full "
+            "SKILL.md body so the model can follow its checklist. This is the harness's equivalent of "
+            "the runtime's `Skill` tool, and the entry point for superpowers' methodology. Use this "
+            "before any creative work or bug fix — the using-superpowers bootstrap says so. Accepts "
+            "the name with or without a group prefix (e.g. 'brainstorming' or "
+            "'superpowers:brainstorming')."
+        ),
+        input_schema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+        fn=lambda name: _invoke_skill(store, name),
     ))
     _register(reg, store, ToolSpec(
         name="learn_skill",

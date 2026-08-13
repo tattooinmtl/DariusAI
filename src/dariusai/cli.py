@@ -160,6 +160,29 @@ def cmd_import_addon(args: argparse.Namespace) -> None:
         print(f"    {category:24} {count}")
 
 
+def cmd_import_external(args: argparse.Namespace) -> None:
+    """Import skills from the external_skills/ folder.
+
+    Layout (see external_skills/README.md):
+      - grouped:  external_skills/<agent>/<skill>/SKILL.md
+      - flat:     external_skills/<skill>/SKILL.md
+
+    Each agent folder becomes a branch node in the brain. Re-running is
+    safe: ids are derived from `<agent>-<skill>`, so a re-import overwrites
+    its own existing rows instead of duplicating them."""
+    from .brain.omni_import import import_external
+    from .brain.store import BrainStore
+    result = import_external(BrainStore(Path(args.home)), args.source)
+    print(f"imported {result['imported']} external skill(s) from {result['source']}")
+    if result["agents"]:
+        for agent, count in sorted(result["by_agent"].items()):
+            print(f"  {agent:24} {count}")
+        for branch in result["branches"]:
+            print(f"  branch {branch}")
+    if result["skipped"]:
+        print(f"  skipped: {result['skipped']}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     from . import VERSION_DISPLAY, __version__
 
@@ -214,6 +237,12 @@ def build_parser() -> argparse.ArgumentParser:
                              help="import addon/skills and addon/hooks into the brain")
     p_addon.add_argument("--source", default=None, help="addon directory (default: ./addon)")
     p_addon.set_defaults(func=cmd_import_addon)
+
+    p_external = sub.add_parser("import-external",
+                                help="import skills from external_skills/ (drop-in folder for other agents)")
+    p_external.add_argument("--source", default=None,
+                            help="external skills directory (default: ./external_skills)")
+    p_external.set_defaults(func=cmd_import_external)
 
     p_shortcuts = sub.add_parser(
         "install-shortcuts", help="create Desktop/Start Menu shortcuts that carry the brain icon"
