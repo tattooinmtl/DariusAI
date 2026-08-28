@@ -120,12 +120,22 @@ class Splash:
         except tk.TclError:
             pass  # a missing/unreadable .ico is not worth failing a launch over
 
-        self.logo_img = tk.PhotoImage(file=str(LOGO_PATH))
-        # Downscale the (1254x1254) source logo to a splash-sized square.
-        factor = max(1, self.logo_img.width() // 300)
-        if factor > 1:
-            self.logo_img = self.logo_img.subsample(factor, factor)
-        logo_w = self.logo_img.width()
+        # A missing logo file must NOT crash the launcher: pythonw has no
+        # console, so a tkinter TclError from PhotoImage disappears without
+        # a trace — the reported bug where the desktop shortcut did
+        # nothing on fresh installs shipped without logo2.png. Fall back to
+        # a blank splash with a text banner and continue.
+        self.logo_img = None
+        logo_w = 320
+        if LOGO_PATH.exists():
+            try:
+                self.logo_img = tk.PhotoImage(file=str(LOGO_PATH))
+                factor = max(1, self.logo_img.width() // 300)
+                if factor > 1:
+                    self.logo_img = self.logo_img.subsample(factor, factor)
+                logo_w = self.logo_img.width()
+            except tk.TclError:
+                self.logo_img = None
 
         width = max(360, logo_w + 40)
         term_h = 120
@@ -139,7 +149,11 @@ class Splash:
         outer = tk.Frame(root, bg=TERM_BG, highlightbackground=BORDER, highlightthickness=1)
         outer.pack(fill="both", expand=True, padx=1, pady=1)
 
-        tk.Label(outer, image=self.logo_img, bg=TERM_BG, bd=0).pack(pady=(16, 10))
+        if self.logo_img is not None:
+            tk.Label(outer, image=self.logo_img, bg=TERM_BG, bd=0).pack(pady=(16, 10))
+        else:
+            tk.Label(outer, text="DariusAI", bg=TERM_BG, fg=TERM_FG,
+                     font=("Consolas", 28, "bold"), bd=0).pack(pady=(28, 18))
 
         term_frame = tk.Frame(outer, bg=PANEL_BG, highlightbackground=BORDER, highlightthickness=1)
         term_frame.pack(padx=18, fill="x")

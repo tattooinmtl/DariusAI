@@ -3098,6 +3098,12 @@
           renderCompactBanner(data);
         } else if (data.type === "permission_request") {
           showPermissionModal(data);
+        } else if (data.type === "sandbox_updated") {
+          // The editor moved to a different project since the last turn,
+          // so the agent's sandbox followed. Say so once, plainly — a
+          // silent switch would explain the bug where the agent
+          // "audited the wrong project" without any visible cue.
+          appendPlain("system", "agent context now points at " + data.project_dir);
         } else if (data.type === "command_result") {
           cmdOnResult(data);
         } else if (data.type === "command_picker") {

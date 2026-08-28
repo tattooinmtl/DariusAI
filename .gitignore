@@ -57,6 +57,28 @@ DariusAI.zip
 Brain.zip
 /*.zip
 
+# --- Root-level screenshots -------------------------------------------------
+# Dev screenshots (bug logs, layout drafts) at the repo root are local
+# reference only — they add MB of noise for every user with nothing to
+# show for it. Root-anchored so PNGs inside src/, addon/skills/ and
+# similar are unaffected.
+#
+# The three PNGs on the ! lines below are re-included deliberately:
+#   logo2.png  - splash-screen artwork. launch.pyw loads it unconditionally
+#                (see line 29). Removing it made the desktop shortcut die
+#                silently on every fresh install — pythonw has no console,
+#                so the tkinter TclError just vanished. Do not gitignore
+#                again without also making the launcher defensive.
+#   brain.png  - the source image tools/make_icons.py reads to regenerate
+#                brain.ico (window + taskbar) and favicon.png (web tab).
+#                Anyone rebuilding icons needs it.
+#   logo1.png  - marketing / documentation asset referenced by external
+#                README material.
+/*.png
+!/logo2.png
+!/brain.png
+!/logo1.png
+
 # --- Generated projects -----------------------------------------------------
 # The workbench lives at C:/DariusAIWorkbench, outside this tree. This is a
 # guard in case someone points workbench_root inside the repo.

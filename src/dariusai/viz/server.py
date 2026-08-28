@@ -881,6 +881,40 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
 
         sandbox.broker = WSBroker()
 
+        # Editor / sandbox sync. The chat WS bakes its sandbox at connection
+        # time, but the editor can point at a different folder later via
+        # `/api/project-dir` (opening a folder in the file tree). Without
+        # this, the agent would keep listing the original workspace root
+        # forever even after the user has clearly moved on — the reported
+        # bug where the editor showed one project and the agent audited
+        # another. `bound_project_dir` tracks what sandbox was built for;
+        # `_sync_sandbox_to_editor` rebuilds when the editor has moved.
+        # session.tools is swapped in place so the conversation history and
+        # token accounting stay intact.
+        bound_project_dir: list[Path] = [app.state.project_dir]
+
+        def _sync_sandbox_to_editor() -> bool:
+            proj = app.state.project_dir
+            if proj == bound_project_dir[0]:
+                return False
+            new_sandbox = Sandbox.for_workspace(proj, _workbench_root(store))
+            new_sandbox.broker = WSBroker()
+            new_tools = build_tool_registry(store, new_sandbox)
+            # Blender re-attach: a bridge that came up mid-session should
+            # start showing up in the agent's tool list on the next turn,
+            # not require a reconnect. Cheap check — a refused TCP connect
+            # when Blender is closed.
+            try:
+                bridge = _blender_bridge()
+                if bridge.status()["state"] == "green":
+                    from ..mcp.registry import register_blender_tools
+                    register_blender_tools(new_tools, bridge, store=store)
+            except Exception:
+                pass
+            session.tools = new_tools
+            bound_project_dir[0] = proj
+            return True
+
         async def _dispatch_incoming():
             """Consume the socket and either route permission responses to
             the pending future or push user prompts onto the queue the main
@@ -914,6 +948,17 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
                 raw = await user_msg_queue.get()
                 if raw is None:
                     raise WebSocketDisconnect
+
+                # Sync the agent's sandbox to whatever folder the editor
+                # is currently showing. If the user opened a different
+                # project since the last turn, the tools now target that
+                # folder — otherwise this is a cheap no-op path compare.
+                if _sync_sandbox_to_editor():
+                    await ws.send_json({
+                        "type": "sandbox_updated",
+                        "project_dir": str(app.state.project_dir),
+                    })
+
                 # The UI's [⚡ Compact] button (and the auto-compaction
                 # hook) sends `{"type": "compact"}` over the same socket;
                 # intercept it before treating the payload as a user

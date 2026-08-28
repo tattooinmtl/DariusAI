@@ -472,6 +472,35 @@ def _invoke_skill(store: BrainStore, name: str, query: str = "", full: bool = Fa
     return "\n".join(parts)
 
 
+def _current_project(sandbox: Sandbox) -> str:
+    """The folder the user has open right now — the sandbox root the agent
+    is confined to. The agent should call this whenever "audit this project"
+    or "what's in here" comes up, so an answer never lists a stale project
+    from a previous editor state."""
+    if sandbox.root is None:
+        return "sandbox is unrestricted — no single project root."
+    root = sandbox.root
+    if not root.is_dir():
+        return f"sandbox root {root} does not exist on disk."
+    # Small manifest so the agent can decide whether to dig further.
+    manifest = []
+    for name in ("pyproject.toml", "Cargo.toml", "package.json", "go.mod",
+                 "requirements.txt", "README.md", "CMakeLists.txt", "index.html"):
+        if (root / name).exists():
+            manifest.append(name)
+    entries = sorted(p.name for p in root.iterdir())[:40]
+    grant_info = ""
+    if sandbox.external_grants:
+        grants = ", ".join(str(g) for g in sandbox.external_grants)
+        grant_info = f"\nExternal read grants this turn: {grants}"
+    return (
+        f"project root: {root}\n"
+        f"manifests present: {', '.join(manifest) if manifest else '(none)'}\n"
+        f"top-level entries ({len(entries)}): {', '.join(entries)}"
+        f"{grant_info}"
+    )
+
+
 def _list_projects(store: BrainStore) -> str:
     """The agent's view of the workbench. Without this it can only see the
     one folder it happens to be pointed at, which makes "carry on with the
@@ -652,6 +681,21 @@ def build_tool_registry(store: BrainStore, sandbox: Sandbox | None = None, on_ev
         ),
         input_schema={"type": "object", "properties": {"node_id": {"type": "string"}}},
         fn=lambda node_id="": _browse_brain(store, node_id),
+    ))
+    _register(reg, store, ToolSpec(
+        name="current_project",
+        description=(
+            "The folder the user has open in the editor RIGHT NOW — the sandbox root "
+            "the agent is currently confined to. Call this before any 'audit this "
+            "project', 'what's in here' or 'read the source' request so the answer "
+            "reflects what the user is looking at, not a stale workbench listing "
+            "from a previous editor state. Returns the root path, which manifest "
+            "files are present (pyproject.toml / Cargo.toml / package.json / go.mod "
+            "/ CMakeLists.txt / index.html), the top-level entries, and any "
+            "external-read grants active this turn."
+        ),
+        input_schema={"type": "object", "properties": {}},
+        fn=lambda: _current_project(sandbox),
     ))
     _register(reg, store, ToolSpec(
         name="list_projects",
