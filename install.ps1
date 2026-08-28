@@ -71,11 +71,23 @@ if (Get-Command py -ErrorAction SilentlyContinue) {
     Fail "Python $($MinPython -join '.')+ is not installed or not on PATH. Install it from https://python.org and re-run."
 }
 
-$versionText = & $pythonExe @pythonArgs -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>$null
-if ($LASTEXITCODE -ne 0 -or -not $versionText) { Fail "Could not run Python via '$pythonExe'." }
+# `python --version` (rather than an inline `-c` one-liner) sidesteps a
+# PowerShell-to-native-cmd quoting bug: the `%` in `"%d.%d" % (...)` was
+# being mangled on some systems, and Python received a truncated string it
+# could not parse. `--version` outputs plain text — "Python 3.11.5" — and
+# PowerShell parses it. `2>&1` merges stderr because older Pythons print
+# the version banner there instead of stdout.
+$versionRaw = & $pythonExe @pythonArgs --version 2>&1 | Select-Object -First 1
+if ($LASTEXITCODE -ne 0 -or -not $versionRaw) { Fail "Could not run Python via '$pythonExe'." }
 
-$found = $versionText.Trim().Split('.') | ForEach-Object { [int] $_ }
-if ($found[0] -lt $MinPython[0] -or ($found[0] -eq $MinPython[0] -and $found[1] -lt $MinPython[1])) {
+if (-not ("$versionRaw" -match 'Python\s+(\d+)\.(\d+)(?:\.(\d+))?')) {
+    Fail "Could not parse Python version from: $versionRaw"
+}
+$foundMajor = [int]$Matches[1]
+$foundMinor = [int]$Matches[2]
+$versionText = "$foundMajor.$foundMinor"
+
+if ($foundMajor -lt $MinPython[0] -or ($foundMajor -eq $MinPython[0] -and $foundMinor -lt $MinPython[1])) {
     Fail "Python $($MinPython -join '.')+ is required, found $versionText."
 }
 Write-Ok "python: $versionText"
