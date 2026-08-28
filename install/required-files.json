@@ -1,0 +1,16 @@
+[
+  "launch.pyw",
+  "pyproject.toml",
+  "version_lock.json",
+  "install.ps1",
+  "src/dariusai/__init__.py",
+  "src/dariusai/cli.py",
+  "src/dariusai/agent/sandbox.py",
+  "src/dariusai/agent/tools.py",
+  "src/dariusai/viz/server.py",
+  "src/dariusai/viz/window.py",
+  "src/dariusai/viz/static/index.html",
+  "src/dariusai/viz/static/brain.ico",
+  "addon/skills",
+  "logo2.png"
+]
