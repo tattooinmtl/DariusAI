@@ -118,14 +118,18 @@ def cmd_run(args: argparse.Namespace) -> None:
 def cmd_chat(args: argparse.Namespace) -> None:
     from .agent.chat import ChatSession
     from .agent.llm import build_llm
-    from .agent.sandbox import Sandbox
+    from .agent.sandbox import Sandbox, TerminalBroker
     from .agent.tools import build_tool_registry
     from .brain.store import BrainStore
 
     store = BrainStore(Path(args.home))
     _require_llm_configured(store)
     project_dir = _resolve_project_dir(args.project_dir)
-    tools = build_tool_registry(store, Sandbox(root=project_dir))
+    # TerminalBroker wires the REPL's stdin/stdout into the permission ask —
+    # so `request_external_read` prompts here the same way the viz opens a
+    # modal, and the agent can study reference projects from either surface.
+    sandbox = Sandbox(root=project_dir, broker=TerminalBroker())
+    tools = build_tool_registry(store, sandbox)
     session = ChatSession(llm=build_llm(store), tools=tools)
     run_repl(session)
 
@@ -197,7 +201,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_viz = sub.add_parser("viz", help="open the floating neural-network window")
     p_viz.add_argument("--host", default="127.0.0.1")
-    p_viz.add_argument("--port", type=int, default=8765)
+    # 8765 is reserved for the Blender MCP add-on; see blender_integration.
+    p_viz.add_argument("--port", type=int, default=8780)
     p_viz.add_argument(
         "--project-dir",
         default=str(DEFAULT_PROJECT_DIR),
@@ -207,7 +212,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_serve = sub.add_parser("serve", help="run the viz server without a native window")
     p_serve.add_argument("--host", default="127.0.0.1")
-    p_serve.add_argument("--port", type=int, default=8765)
+    p_serve.add_argument("--port", type=int, default=8780)
     p_serve.add_argument(
         "--project-dir",
         default=str(DEFAULT_PROJECT_DIR),

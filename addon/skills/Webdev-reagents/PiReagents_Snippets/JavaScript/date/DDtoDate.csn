@@ -1,0 +1,18 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Date: Cardinal to Ordinal" description = "Adds a suffix to a number from 1 through 31, to create a string from '1st' to '31st'." preview="code" type="wrap">
+<insertText location="beforeSelection">
+<![CDATA[function DDtoDay(inputDate)
+{
+  var dateString = new Array('','st','nd','rd','th','th','th','th','th','th','th','th','th','th','th','th','th','th','th','th','th','st','nd','rd','th','th','th','th','th','th','th','st');
+  returnDate = '';
+  tempDate = parseInt(inputDate);
+  if (tempDate >= 1 && tempDate <= 31)
+  {
+	  returnDate = inputDate + dateString[tempDate];
+	}
+	return returnDate;
+}]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

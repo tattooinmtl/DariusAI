@@ -35,7 +35,10 @@ def test_window_buttons_do_not_start_a_window_drag():
 
 
 def test_settings_panel_is_modeless():
-    assert "MODELESS = { settings: true }" in PAGE
+    # Matched loosely: the invariant is that settings is in the modeless set,
+    # not that it is the only entry — pinning the exact literal broke as soon
+    # as New Project and Windows joined it.
+    assert re.search(r"MODELESS = \{[^}]*\bsettings: true", PAGE)
     assert "#modalRoot.modeless { background: none; pointer-events: none; }" in PAGE
 
 

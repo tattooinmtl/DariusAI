@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Starter Script 1.1, Wrap" description = "Wraps a JavaScript 1.1 header and footer around the selection." preview="code" type="wrap">
+<insertText location="beforeSelection">
+<![CDATA[<script language="JavaScript1.1">
+<!--]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[// -->
+</script>]]>
+</insertText>
+</snippet>

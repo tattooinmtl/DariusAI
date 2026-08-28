@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "String to Float" description = "Converts a string into a floating point number." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function stringToFloat (inputString)
+{
+  return parseFloat(inputString);
+}]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

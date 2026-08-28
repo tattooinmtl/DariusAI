@@ -1,0 +1,1592 @@
+[
+  {
+    "command": "/help",
+    "group": "conversation",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "159 commands available across 14 groups.",
+    "ui_out": "list"
+  },
+  {
+    "command": "/skills",
+    "group": "conversation",
+    "aliases": "skill-list",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "1 skills available.",
+    "ui_out": "list"
+  },
+  {
+    "command": "/skill-list",
+    "group": "conversation",
+    "aliases": "skill-list",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "1 skills available.",
+    "ui_out": "list"
+  },
+  {
+    "command": "/exit",
+    "group": "conversation",
+    "aliases": "quit, bye",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Session closed.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/quit",
+    "group": "conversation",
+    "aliases": "quit, bye",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Session closed.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/bye",
+    "group": "conversation",
+    "aliases": "quit, bye",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Session closed.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/clear",
+    "group": "conversation",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Chat history cleared.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/reset",
+    "group": "conversation",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Session reset.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/compact",
+    "group": "conversation",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Compact requested.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/history",
+    "group": "conversation",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Recent turns:",
+    "ui_out": "none"
+  },
+  {
+    "command": "/session",
+    "group": "conversation",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Session: active.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/sessions",
+    "group": "conversation",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Recent sessions:",
+    "ui_out": "none"
+  },
+  {
+    "command": "/resume",
+    "group": "conversation",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Resume requested for session sess-1.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/rename",
+    "group": "conversation",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Renamed session to sample.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/export",
+    "group": "conversation",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Exported chat to default path.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/import",
+    "group": "conversation",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Imported chat from sample.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/share",
+    "group": "conversation",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Share-link URL: (placeholder \u2014 share-to-platform wiring pending).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/memory",
+    "group": "memory",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Stored memory entries:",
+    "ui_out": "none"
+  },
+  {
+    "command": "/remember",
+    "group": "memory",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Remembered: sample",
+    "ui_out": "none"
+  },
+  {
+    "command": "/forget",
+    "group": "memory",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Forgot sample.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/search",
+    "group": "memory",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "1 results for 'sample'.",
+    "ui_out": "list"
+  },
+  {
+    "command": "/index",
+    "group": "memory",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Brain reindex started.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/consolidate",
+    "group": "memory",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Memory consolidation requested.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/where",
+    "group": "memory",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "1 hits for 'sample'.",
+    "ui_out": "list"
+  },
+  {
+    "command": "/new",
+    "group": "project",
+    "aliases": "new-project",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Creating project 'sample' (template: html).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/new-project",
+    "group": "project",
+    "aliases": "new-project",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Creating project 'sample' (template: html).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/open",
+    "group": "project",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Open requested for 'sample'.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/close",
+    "group": "project",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Project closed.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/project",
+    "group": "project",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Current project: (open the panel to view).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/projects",
+    "group": "project",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Projects in this workbench:",
+    "ui_out": "none"
+  },
+  {
+    "command": "/init",
+    "group": "project",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Initializing project 'sample'.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/scaffold",
+    "group": "project",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Scaffolding 'sample' with template 'sample'.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/template",
+    "group": "project",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Template set to 'sample'.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/build",
+    "group": "project",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "error",
+    "msg": "No build command detected for this project.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/test",
+    "group": "project",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "error",
+    "msg": "pytest not installed.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/lint",
+    "group": "project",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "error",
+    "msg": "ruff not installed.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/format",
+    "group": "project",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "error",
+    "msg": "ruff not installed.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/run",
+    "group": "project",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "error",
+    "msg": "run failed: [WinError 2] The system cannot find the file specified",
+    "ui_out": "none"
+  },
+  {
+    "command": "/clean",
+    "group": "project",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Cleaned: nothing to clean",
+    "ui_out": "none"
+  },
+  {
+    "command": "/install",
+    "group": "project",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "error",
+    "msg": "No pyproject.toml or package.json \u2014 can't infer install command.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/update",
+    "group": "project",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "error",
+    "msg": "No pyproject.toml or package.json \u2014 can't infer update command.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/deploy",
+    "group": "project",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Deploy requested. (Deployment integration pending \u2014 pipeline not configured.)",
+    "ui_out": "none"
+  },
+  {
+    "command": "/provider",
+    "group": "provider",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "error",
+    "msg": "provider: provider 'sample' not found",
+    "ui_out": "none"
+  },
+  {
+    "command": "/providers",
+    "group": "provider",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "1 providers configured.",
+    "ui_out": "list"
+  },
+  {
+    "command": "/add",
+    "group": "provider",
+    "aliases": "add-provider, add provider",
+    "interactive": "Yes",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Pick a provider preset (use \u2190\u2192 to switch tabs, \u2191\u2193 to navigate, Enter to select).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/add-provider",
+    "group": "provider",
+    "aliases": "add-provider, add provider",
+    "interactive": "Yes",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Pick a provider preset (use \u2190\u2192 to switch tabs, \u2191\u2193 to navigate, Enter to select).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/add provider",
+    "group": "provider",
+    "aliases": "add-provider, add provider",
+    "interactive": "Yes",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Pick a provider preset (use \u2190\u2192 to switch tabs, \u2191\u2193 to navigate, Enter to select).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/remove",
+    "group": "provider",
+    "aliases": "remove-provider",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Removed provider 'sample'.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/remove-provider",
+    "group": "provider",
+    "aliases": "remove-provider",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Removed provider 'sample'.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/model",
+    "group": "provider",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Switched model to 'sample'.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/preset",
+    "group": "provider",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "6 presets available.",
+    "ui_out": "list"
+  },
+  {
+    "command": "/key",
+    "group": "provider",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "API key updated.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/url",
+    "group": "provider",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Base URL set to 'http://localhost:11434'.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/test-provider",
+    "group": "provider",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "error",
+    "msg": "Usage: /test <provider>",
+    "ui_out": "none"
+  },
+  {
+    "command": "/default",
+    "group": "provider",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "error",
+    "msg": "set_active_provider failed: provider 'sample' not found",
+    "ui_out": "none"
+  },
+  {
+    "command": "/usage",
+    "group": "provider",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Token usage by turn: (see chat panel stats footer).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/cost",
+    "group": "provider",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Estimated cost: (cost tracking pending model price catalog).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/tokens",
+    "group": "provider",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Token usage by turn: (see chat panel stats footer).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/context",
+    "group": "provider",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Context window size: (read from active provider's model spec).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/agent",
+    "group": "agent",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Agent: idle. (status: ready)",
+    "ui_out": "none"
+  },
+  {
+    "command": "/agents",
+    "group": "agent",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Available agents:",
+    "ui_out": "none"
+  },
+  {
+    "command": "/tools",
+    "group": "agent",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "14 tools registered.",
+    "ui_out": "list"
+  },
+  {
+    "command": "/tool",
+    "group": "agent",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Tool 'sample': (description lookup pending).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/plan",
+    "group": "agent",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Plan mode: ON.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/act",
+    "group": "agent",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Plan mode: OFF.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/review",
+    "group": "agent",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Review started.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/fix",
+    "group": "agent",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Fix-mode enabled.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/interrupt",
+    "group": "agent",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Interrupt sent.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/cancel",
+    "group": "agent",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Cancel sent.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/pause",
+    "group": "agent",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Paused.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/resume-agent",
+    "group": "agent",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Resumed.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/approve",
+    "group": "agent",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Approved.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/reject",
+    "group": "agent",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Rejected.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/skip",
+    "group": "agent",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Skipped.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/retry",
+    "group": "agent",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Retrying.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/undo",
+    "group": "agent",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Undone.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/redo",
+    "group": "agent",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Redone.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/git",
+    "group": "git",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "$ git status\nfatal: not a git repository (or any of the parent directories): .git",
+    "ui_out": "none"
+  },
+  {
+    "command": "/commit",
+    "group": "git",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "ERROR",
+    "status": "error",
+    "msg": "CalledProcessError: Command '['git', 'add', '-A']' returned non-zero exit status 128.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/push",
+    "group": "git",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "$ git push\nfatal: not a git repository (or any of the parent directories): .git",
+    "ui_out": "none"
+  },
+  {
+    "command": "/pull",
+    "group": "git",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "$ git pull\nfatal: not a git repository (or any of the parent directories): .git",
+    "ui_out": "none"
+  },
+  {
+    "command": "/branch",
+    "group": "git",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "$ git checkout -b sample\nfatal: not a git repository (or any of the parent directories): .git",
+    "ui_out": "none"
+  },
+  {
+    "command": "/merge",
+    "group": "git",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "$ git merge sample\nfatal: not a git repository (or any of the parent directories): .git",
+    "ui_out": "none"
+  },
+  {
+    "command": "/rebase",
+    "group": "git",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "$ git rebase\nfatal: not a git repository (or any of the parent directories): .git",
+    "ui_out": "none"
+  },
+  {
+    "command": "/git-diff",
+    "group": "git",
+    "aliases": "gitdiff",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "$ git diff\n",
+    "ui_out": "none"
+  },
+  {
+    "command": "/gitdiff",
+    "group": "git",
+    "aliases": "gitdiff",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "$ git diff\n",
+    "ui_out": "none"
+  },
+  {
+    "command": "/log",
+    "group": "git",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "$ git log --oneline -n 10\nfatal: not a git repository (or any of the parent directories): .git",
+    "ui_out": "none"
+  },
+  {
+    "command": "/git-status",
+    "group": "git",
+    "aliases": "gitstatus",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Status: ok.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/gitstatus",
+    "group": "git",
+    "aliases": "gitstatus",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Status: ok.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/pr",
+    "group": "git",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "PR opener requested for branch 'sample'.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/worktree",
+    "group": "git",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Worktree manager: (UI panel \u2014 open via chat panel menu).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/stash",
+    "group": "git",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "$ git stash\nfatal: not a git repository (or any of the parent directories): .git",
+    "ui_out": "none"
+  },
+  {
+    "command": "/ls",
+    "group": "files",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "0 entries in ..",
+    "ui_out": "list"
+  },
+  {
+    "command": "/tree",
+    "group": "files",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Tree of C:\\Users\\ThePa\\AppData\\Local\\Temp\\audit_fylngmub\\proj:\n",
+    "ui_out": "none"
+  },
+  {
+    "command": "/find",
+    "group": "files",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "0 files match 'sample'.",
+    "ui_out": "list"
+  },
+  {
+    "command": "/grep",
+    "group": "files",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "0 grep hits for 'sample'.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/read",
+    "group": "files",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "error",
+    "msg": "file not found: sample",
+    "ui_out": "none"
+  },
+  {
+    "command": "/write",
+    "group": "files",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Wrote 6 chars to sample.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/edit",
+    "group": "files",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Edit requested for 'sample' (open in editor).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/open-file",
+    "group": "files",
+    "aliases": "file-open",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Open requested for 'sample'.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/file-open",
+    "group": "files",
+    "aliases": "file-open",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Open requested for 'sample'.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/cd",
+    "group": "files",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "cd sample (project-relative).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/pwd",
+    "group": "files",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "cwd: C:\\Users\\ThePa\\AppData\\Local\\Temp\\audit_fylngmub\\proj",
+    "ui_out": "none"
+  },
+  {
+    "command": "/mkdir",
+    "group": "files",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "error",
+    "msg": "mkdir failed: [WinError 183] Cannot create a file when that file already exists: 'C:\\\\Users\\\\ThePa\\\\AppData\\\\Local\\\\Temp\\\\audit_fylngmub\\\\proj\\\\sample'",
+    "ui_out": "none"
+  },
+  {
+    "command": "/rm",
+    "group": "files",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Removed sample.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/cp",
+    "group": "files",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "error",
+    "msg": "cp failed: [WinError 2] The system cannot find the file specified",
+    "ui_out": "none"
+  },
+  {
+    "command": "/mv",
+    "group": "files",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "error",
+    "msg": "mv failed: [WinError 2] The system cannot find the file specified: 'C:\\\\Users\\\\ThePa\\\\AppData\\\\Local\\\\Temp\\\\audit_fylngmub\\\\proj\\\\a.txt' -> 'C:\\\\Users\\\\ThePa\\\\AppData\\\\Local\\\\Temp\\\\audit_fylngmub\\\\pro",
+    "ui_out": "none"
+  },
+  {
+    "command": "/skill",
+    "group": "skills",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Skill 'sample': details (open in brain to view).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/invoke",
+    "group": "skills",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Invoking skill 'sample'.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/create",
+    "group": "skills",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Skill 'sample' created (draft).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/edit-skill",
+    "group": "skills",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Open skill 'sample' for editing.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/delete",
+    "group": "skills",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Skill 'sample' deleted.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/share-skill",
+    "group": "skills",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Skill 'sample' shareable (real wiring pending).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/import-skill",
+    "group": "skills",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Skill import started.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/export-skill",
+    "group": "skills",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Skill export started.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/web",
+    "group": "web",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "NOT_IMPLEMENTED",
+    "status": "error",
+    "msg": "`/web` is registered but not yet implemented. The handler will be filled in in a future session.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/browse",
+    "group": "web",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "NOT_IMPLEMENTED",
+    "status": "error",
+    "msg": "`/browse` is registered but not yet implemented. The handler will be filled in in a future session.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/fetch",
+    "group": "web",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "NOT_IMPLEMENTED",
+    "status": "error",
+    "msg": "`/fetch` is registered but not yet implemented. The handler will be filled in in a future session.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/youtube",
+    "group": "web",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "NOT_IMPLEMENTED",
+    "status": "error",
+    "msg": "`/youtube` is registered but not yet implemented. The handler will be filled in in a future session.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/wiki",
+    "group": "web",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "NOT_IMPLEMENTED",
+    "status": "error",
+    "msg": "`/wiki` is registered but not yet implemented. The handler will be filled in in a future session.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/github",
+    "group": "web",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "NOT_IMPLEMENTED",
+    "status": "error",
+    "msg": "`/github` is registered but not yet implemented. The handler will be filled in in a future session.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/docs",
+    "group": "web",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "NOT_IMPLEMENTED",
+    "status": "error",
+    "msg": "`/docs` is registered but not yet implemented. The handler will be filled in in a future session.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/trust",
+    "group": "permissions",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Trust granted for 'sample'.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/untrust",
+    "group": "permissions",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Trust revoked for 'sample'.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/allow",
+    "group": "permissions",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Allow rule set for 'git status'.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/deny",
+    "group": "permissions",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Deny rule set for 'git status'.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/yolo",
+    "group": "permissions",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Yolo mode: OFF.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/safe",
+    "group": "permissions",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Safe mode: already ON.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/permissions",
+    "group": "permissions",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Permissions: (open settings panel to view trust/allow/deny rules).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/sandbox",
+    "group": "permissions",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Sandbox root: C:\\Users\\ThePa\\AppData\\Local\\Temp\\audit_fylngmub\\proj",
+    "ui_out": "none"
+  },
+  {
+    "command": "/settings",
+    "group": "settings",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Settings: (open settings panel to view).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/config",
+    "group": "settings",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Set sample = 'sample'.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/theme",
+    "group": "settings",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Theme 'sample' applied.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/reset-settings",
+    "group": "settings",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Settings reset to defaults.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/clear-cache",
+    "group": "settings",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Cache cleared.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/cache",
+    "group": "settings",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Cache: (open settings panel to view).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/layout",
+    "group": "settings",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Layout 'sample' applied.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/font",
+    "group": "settings",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Font 'sample' applied.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/status",
+    "group": "status",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Status: ok.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/health",
+    "group": "status",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Health: ok.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/logs",
+    "group": "status",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Recent logs:",
+    "ui_out": "none"
+  },
+  {
+    "command": "/errs",
+    "group": "status",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Recent errors:",
+    "ui_out": "none"
+  },
+  {
+    "command": "/warns",
+    "group": "status",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Recent warnings:",
+    "ui_out": "none"
+  },
+  {
+    "command": "/info",
+    "group": "status",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Info: (open system info panel).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/debug-cmd",
+    "group": "status",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Debug mode: ON.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/metrics",
+    "group": "status",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Metrics: (open observability panel).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/mem-status",
+    "group": "status",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "WORKING",
+    "status": "ok",
+    "msg": "Memory status: (open memory panel).",
+    "ui_out": "none"
+  },
+  {
+    "command": "/voice",
+    "group": "voice",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "NOT_IMPLEMENTED",
+    "status": "error",
+    "msg": "`/voice` is registered but not yet implemented. The handler will be filled in in a future session.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/speak",
+    "group": "voice",
+    "aliases": "say",
+    "interactive": "No",
+    "result_cat": "NOT_IMPLEMENTED",
+    "status": "error",
+    "msg": "`/speak` is registered but not yet implemented. The handler will be filled in in a future session.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/say",
+    "group": "voice",
+    "aliases": "say",
+    "interactive": "No",
+    "result_cat": "NOT_IMPLEMENTED",
+    "status": "error",
+    "msg": "`/speak` is registered but not yet implemented. The handler will be filled in in a future session.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/stop-voice",
+    "group": "voice",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "NOT_IMPLEMENTED",
+    "status": "error",
+    "msg": "`/stop-voice` is registered but not yet implemented. The handler will be filled in in a future session.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/mute",
+    "group": "voice",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "NOT_IMPLEMENTED",
+    "status": "error",
+    "msg": "`/mute` is registered but not yet implemented. The handler will be filled in in a future session.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/unmute",
+    "group": "voice",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "NOT_IMPLEMENTED",
+    "status": "error",
+    "msg": "`/unmute` is registered but not yet implemented. The handler will be filled in in a future session.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/volume",
+    "group": "voice",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "NOT_IMPLEMENTED",
+    "status": "error",
+    "msg": "`/volume` is registered but not yet implemented. The handler will be filled in in a future session.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/login",
+    "group": "login",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "NOT_IMPLEMENTED",
+    "status": "error",
+    "msg": "`/login` is registered but not yet implemented. The handler will be filled in in a future session.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/logout",
+    "group": "login",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "NOT_IMPLEMENTED",
+    "status": "error",
+    "msg": "`/logout` is registered but not yet implemented. The handler will be filled in in a future session.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/whoami",
+    "group": "login",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "NOT_IMPLEMENTED",
+    "status": "error",
+    "msg": "`/whoami` is registered but not yet implemented. The handler will be filled in in a future session.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/signup",
+    "group": "login",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "NOT_IMPLEMENTED",
+    "status": "error",
+    "msg": "`/signup` is registered but not yet implemented. The handler will be filled in in a future session.",
+    "ui_out": "none"
+  },
+  {
+    "command": "/account",
+    "group": "login",
+    "aliases": "none",
+    "interactive": "No",
+    "result_cat": "NOT_IMPLEMENTED",
+    "status": "error",
+    "msg": "`/account` is registered but not yet implemented. The handler will be filled in in a future session.",
+    "ui_out": "none"
+  }
+]

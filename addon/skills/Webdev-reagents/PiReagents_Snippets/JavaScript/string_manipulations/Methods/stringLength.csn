@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "String Length" description = "Determines the length of a given string, in number of UTF-8 characters." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function stringLength(inputString)
+{
+  return inputString.length;
+}]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

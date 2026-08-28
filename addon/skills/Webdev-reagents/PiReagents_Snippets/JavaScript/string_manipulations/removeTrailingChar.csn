@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Remove Trailing Characters" description = "If a given character (such as a space) appears at the end of the given string, removes that character." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function removeTrailingChar (inputString, removeChar)
+{
+	var returnString=inputString;
+	if (removeChar.length)
+	{
+    while(''+returnString.charAt(returnString.length-1)==removeChar)
+	  {
+	    returnString=returnString.substring(0,returnString.length-1);
+	  }
+	}
+	return returnString;
+}]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

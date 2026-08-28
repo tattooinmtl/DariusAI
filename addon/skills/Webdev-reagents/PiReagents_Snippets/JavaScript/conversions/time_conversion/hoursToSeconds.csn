@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name="Hours to Seconds" description="Converts hours to seconds." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function hoursToSeconds(hrs) { return hrs*=3600; }
+]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

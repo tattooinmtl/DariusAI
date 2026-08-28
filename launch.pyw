@@ -85,7 +85,10 @@ def run_backend(events: "queue.Queue[ProgressEvent]") -> None:
 
         events.put(ProgressEvent("starting server…", 55))
         from dariusai.viz.window import _start_server
-        server, port = _start_server(app, "127.0.0.1", 8765)
+        # 8780, not 8765: 8765 is reserved for the Blender MCP add-on, which
+        # cannot pick another port the way this can (Blender's clients look
+        # for it there). _start_server scans upward from here anyway.
+        server, port = _start_server(app, "127.0.0.1", 8780)
         events.put(ProgressEvent(f"server listening on 127.0.0.1:{port}", 80))
 
         # Probe the language runtimes off to one side. Eleven subprocesses

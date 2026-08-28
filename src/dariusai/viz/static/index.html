@@ -554,6 +554,116 @@
   .layout-opt-actions button.danger:hover { background: #991b1b; }
   .settings-err { color: #f87171; font-size: 11px; margin-top: 6px; }
 
+  /* ---- Blender connection light -------------------------------------- */
+  /* Lives in the title bar so it is visible whatever panel you are in.
+     Red = not connected, orange = reachable but wrong or unwell, green =
+     handshake done. The mark after the light is the affordance: the dot
+     alone would be one more unexplained pixel. */
+  #blenderStatus { display: flex; align-items: center; gap: 6px; padding: 0 10px;
+    cursor: pointer; align-self: center; border-radius: 6px; height: 22px; }
+  #blenderStatus:hover { background: rgba(255,255,255,0.07); }
+  #blenderStatus .dot { width: 8px; height: 8px; border-radius: 50%; background: #f87171;
+    box-shadow: 0 0 6px rgba(248,113,113,0.6); transition: background .2s ease, box-shadow .2s ease; }
+  #blenderStatus.state-orange .dot { background: #fbbf24; box-shadow: 0 0 6px rgba(251,191,36,0.6); }
+  #blenderStatus.state-green .dot { background: #6ee7b7; box-shadow: 0 0 7px rgba(110,231,183,0.7); }
+  #blenderStatus .mark { color: #7b829f; transition: color .2s ease; }
+  #blenderStatus.state-green .mark { color: #e6903f; }
+  #blenderStatus.state-orange .mark { color: #c8a15e; }
+
+  .bl-row { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 7px;
+    background: #0d0f20; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 6px;
+    font-size: 12px; color: #cfd3ec; }
+  .bl-row .k { color: #8b93b8; flex: 0 0 108px; }
+  .bl-row .v { flex: 1 1 auto; min-width: 0; word-break: break-all; }
+  .bl-state { font-weight: 600; }
+  .bl-state.red { color: #f87171; }
+  .bl-state.orange { color: #fbbf24; }
+  .bl-state.green { color: #6ee7b7; }
+  .bl-tools { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .bl-tools span { font-size: 10.5px; padding: 2px 6px; border-radius: 4px; background: #1b1e38;
+    border: 1px solid rgba(255,255,255,0.08); color: #9aa1c7; }
+  .bl-busy { font-size: 11.5px; color: #6ea8ff; margin-top: 8px; }
+
+  /* ---- Windows dialog: available sections + drag-onto-mockup --------- */
+  /* The mockup is the same nine slots the real dock overlay uses, shrunk to
+     a thumbnail. Dragging a section onto a cell here is the same gesture as
+     dragging a floating panel over the workspace, so the hover rectangle is
+     styled to match .dock-preview rather than inventing a second visual
+     language for the same action. */
+  .wm-wrap { display: flex; gap: 14px; align-items: stretch; margin-top: 4px; }
+  .wm-col { display: flex; flex-direction: column; min-width: 0; }
+  .wm-col.list { flex: 0 0 176px; }
+  .wm-col.mock { flex: 1 1 auto; }
+  .wm-col > h5 { margin: 0 0 7px; font-size: 10.5px; text-transform: uppercase;
+    letter-spacing: .05em; color: #6c7399; font-weight: 600; }
+  .wm-list { flex: 1 1 auto; min-height: 176px; padding: 6px; border-radius: 8px;
+    background: #0d0f20; border: 1px solid rgba(255,255,255,0.07); }
+  .wm-list.hot { border-color: #f87171; background: rgba(127,29,29,0.22); }
+  .wm-chip { display: flex; align-items: center; gap: 7px; padding: 6px 8px; margin-bottom: 5px;
+    border-radius: 6px; background: #1b1e38; border: 1px solid rgba(255,255,255,0.1);
+    font-size: 11.5px; color: #eef1ff; cursor: grab; user-select: none; }
+  .wm-chip:hover { border-color: rgba(140,170,255,0.55); }
+  .wm-chip .dot { width: 7px; height: 7px; border-radius: 50%; background: #3b5bdb; flex: none; }
+  .wm-chip.placed { opacity: 0.5; }
+  .wm-chip.placed .dot { background: #6ee7b7; }
+  .wm-chip .where { margin-left: auto; font-size: 10px; color: #6c7399; }
+  .wm-empty { font-size: 11px; color: #5b6289; padding: 8px 4px; line-height: 1.5; }
+  .wm-grid { flex: 1 1 auto; display: grid; grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr); gap: 5px; min-height: 176px; padding: 5px;
+    border-radius: 8px; background: #0d0f20; border: 1px solid rgba(255,255,255,0.07); }
+  .wm-cell { position: relative; border: 1px dashed rgba(255,255,255,0.13); border-radius: 6px;
+    padding: 4px; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
+  .wm-cell.hot { background: rgba(59,91,219,0.14); border: 2px solid #6ea8ff;
+    padding: 3px; box-shadow: 0 0 18px rgba(110,168,255,0.25); }
+  .wm-tile { display: flex; align-items: center; gap: 5px; padding: 4px 6px; border-radius: 5px;
+    background: #2b3566; border: 1px solid rgba(140,170,255,0.4); font-size: 10.5px;
+    color: #eef1ff; cursor: grab; user-select: none; white-space: nowrap; overflow: hidden; }
+  .wm-tile .x { margin-left: auto; color: #9aa1c7; cursor: pointer; padding: 0 2px; }
+  .wm-tile .x:hover { color: #f87171; }
+  .wm-bay { margin-top: 8px; min-height: 40px; padding: 6px; border-radius: 8px;
+    background: #0d0f20; border: 1px dashed rgba(255,255,255,0.13);
+    display: flex; flex-wrap: wrap; gap: 5px; align-items: flex-start; }
+  .wm-bay.hot { border: 2px solid #6ea8ff; padding: 5px; background: rgba(59,91,219,0.14); }
+  .wm-bay-label { font-size: 10px; color: #5b6289; align-self: center; }
+  .wm-ghost { position: fixed; z-index: 1200; pointer-events: none; padding: 5px 9px;
+    border-radius: 6px; background: #3b5bdb; color: #fff; font-size: 11px;
+    box-shadow: 0 8px 22px rgba(0,0,0,0.55); opacity: 0.94; }
+  .wm-hint { font-size: 11px; color: #6c7399; margin-top: 10px; line-height: 1.5; }
+
+  /* ---- console + terminal panels ------------------------------------- */
+  .cons-wrap, .term-wrap { position: absolute; inset: 0; display: flex; flex-direction: column;
+    background: #05060f; min-height: 0; }
+  .cons-bar, .term-bar { flex: none; display: flex; align-items: center; gap: 7px; padding: 5px 8px;
+    background: #0d0f20; border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 11px; color: #8b93b8; }
+  .cons-bar input, .term-bar input { background: #05060f; border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 5px; color: #e6e9f5; font-size: 11px; padding: 3px 7px; outline: none; }
+  .cons-bar button, .term-bar button { background: #1b1e38; border: 1px solid rgba(255,255,255,0.14);
+    color: #cfd3ec; border-radius: 5px; padding: 3px 9px; font-size: 11px; cursor: pointer; }
+  .cons-bar button:hover, .term-bar button:hover { border-color: rgba(255,255,255,0.3); }
+  .cons-bar button.on { background: #3b5bdb; border-color: #3b5bdb; color: #fff; }
+  .cons-bar button:disabled, .term-bar button:disabled { opacity: 0.4; cursor: default; }
+  .live-dot { width: 7px; height: 7px; border-radius: 50%; background: #f87171; flex: none; }
+  .cons-out, .term-out { flex: 1 1 auto; overflow-y: auto; padding: 6px 9px; min-height: 0;
+    font-family: Consolas, "Cascadia Mono", monospace; font-size: 11.5px; line-height: 1.55;
+    color: #cfd3ec; white-space: pre-wrap; word-break: break-word; }
+  .cons-line { display: flex; gap: 8px; padding: 1px 0; }
+  .cons-line .t { flex: none; color: #4b5170; }
+  .cons-line .k { flex: none; min-width: 108px; color: #6ea8ff; }
+  .cons-line .m { flex: 1 1 auto; min-width: 0; }
+  .cons-line.err .k, .cons-line.err .m { color: #f87171; }
+  .cons-line.warn .k { color: #fbbf24; }
+  .cons-line.ok .k { color: #6ee7b7; }
+  .cons-line.replay { opacity: 0.55; }
+  .term-out .cmd { color: #6ee7b7; }
+  .term-out .sys { color: #6c7399; }
+  .term-out .err { color: #f87171; }
+  .term-in { flex: none; display: flex; align-items: center; gap: 6px; padding: 5px 9px;
+    border-top: 1px solid rgba(255,255,255,0.07); background: #0d0f20; }
+  .term-in .ps { color: #6ee7b7; font-family: Consolas, "Cascadia Mono", monospace; font-size: 11.5px; flex: none; }
+  .term-in input { flex: 1 1 auto; background: transparent; border: none; outline: none; color: #e6e9f5;
+    font-family: Consolas, "Cascadia Mono", monospace; font-size: 11.5px; }
+  .term-cwd { color: #6c7399; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
+
   /* ---- new project form ---------------------------------------------- */
   .np-combo { position: relative; }
   .np-list { max-height: 168px; overflow-y: auto; margin-top: 5px; border: 1px solid rgba(255,255,255,0.1);
@@ -580,6 +690,17 @@
   <div id="titlebar" class="pywebview-drag-region">
     <div class="brand"><span class="icon">🧠</span><span>DariusAI</span><span class="version" id="versionBadge"></span></div>
     <div class="spacer"></div>
+    <!-- Blender connection light. The mark is an isometric cube rather than
+         Blender's own logo: it reads as "3D app" at 14px, and it is ours to
+         ship. Inline SVG for the same reason as the window buttons — WebView2
+         has no glyph coverage to rely on. -->
+    <div id="blenderStatus" class="state-red" title="Blender: checking…">
+      <span class="dot"></span>
+      <svg class="mark" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M8 1.2 14.4 4.8v6.4L8 14.8 1.6 11.2V4.8Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+        <path d="M1.6 4.8 8 8.4l6.4-3.6M8 8.4v6.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+      </svg>
+    </div>
     <button id="btnReload" title="This window is running an older build of the app" style="display:none">⟳ New build — Reload</button>
     <!-- Titlebar window buttons. They used to be Unicode glyphs (─, ▢, ✕)
          that render fine in Segoe UI on a normal Edge tab but show as
@@ -615,11 +736,17 @@
         <div class="menu-item" data-action="find">Find…</div>
       </div>
     </div>
+    <div class="menu" data-menu="view">View
+      <div class="menu-dropdown">
+        <div class="menu-item" data-action="show-windows">Windows…</div>
+        <div class="menu-item" data-action="show-layout-options">Layout Options…</div>
+        <div class="menu-sep"></div>
+        <div class="menu-item" data-action="reset-layout">Reset Layout…</div>
+      </div>
+    </div>
     <div class="menu" data-menu="settings">Settings
       <div class="menu-dropdown">
         <div class="menu-item" data-action="show-settings">Preferences…</div>
-        <div class="menu-sep"></div>
-        <div class="menu-item" data-action="show-layout-options">Layout Options…</div>
       </div>
     </div>
     <div class="menu" data-menu="help">Help
@@ -741,10 +868,18 @@
     // where column is left|centre|right and row is top|middle|bottom — the
     // nine drop targets. DOCK_ORDER survives only as the default arrangement
     // and as the reset target; live placement comes from each panel's slot.
-    var DOCK_ORDER = ["neural", "chat", "editor"];
+    var DOCK_ORDER = ["neural", "chat", "editor", "console", "terminal"];
     var COLUMNS = ["left", "centre", "right"];
     var ROWS = ["top", "middle", "bottom"];
-    var DEFAULT_SLOTS = { neural: "left:middle", chat: "centre:middle", editor: "right:middle" };
+    var DEFAULT_SLOTS = { neural: "left:middle", chat: "centre:middle", editor: "right:middle",
+                          console: "centre:bottom", terminal: "right:bottom" };
+    // Console and Terminal exist from boot — live views, wired to the server —
+    // but start unplaced so the default three-panel layout is unchanged. They
+    // show up under View → Windows as available sections to drag in.
+    var DEFAULT_HIDDEN = { console: true, terminal: true };
+    var ROW_LABELS = { top: "top", middle: "middle", bottom: "bottom" };
+    var listeners = [];
+    function notify() { listeners.forEach(function (fn) { try { fn(); } catch (e) {} }); }
 
     function slotOf(panel) {
       return panel.slot || DEFAULT_SLOTS[panel.id] || "centre:middle";
@@ -836,6 +971,7 @@
         row.appendChild(wrap);
         lastColumnPanel = members[0].panel;
       });
+      notify();   // the Windows dialog mirrors this arrangement live
     }
 
     function attachSplitter(sp, leftPanel) {
@@ -960,6 +1096,7 @@
         panel.toggleBtn.title = "Float";
       }
       saveState();
+      notify();
       window.dispatchEvent(new Event("resize"));
     }
 
@@ -1006,9 +1143,13 @@
       // Previously docking position came from a fixed DOCK_ORDER array, so a
       // panel always snapped back to the slot it was born in and a popout —
       // absent from that array — snapped back to nowhere at all.
-      var panel = { id: id, el: el, toggleBtn: toggleBtn, closeBtn: closeBtn, mode: "docked",
+      // `title` is kept on the panel (not just in the DOM) so the Windows
+      // dialog can name a section that is currently unplaced and therefore
+      // has no title bar on screen to read it off.
+      var panel = { id: id, el: el, title: title, toggleBtn: toggleBtn, closeBtn: closeBtn, mode: "docked",
                     x: null, y: null, w: null, h: null, dockWidth: null,
-                    slot: null, closable: false };
+                    slot: null, closable: false, hidden: !!DEFAULT_HIDDEN[id] };
+      if (panel.hidden) el.classList.add("collapsed-away");
       panels[id] = panel;
 
       closeBtn.addEventListener("click", function (ev) {
@@ -1129,19 +1270,87 @@
         if (p.mode === "floating") setMode(p, "docked");
         p.dockWidth = null;
         p.slot = DEFAULT_SLOTS[id] || null;
-        p.hidden = false;
-        p.el.classList.remove("collapsed-away");
+        p.hidden = !!DEFAULT_HIDDEN[id];
+        p.el.classList.toggle("collapsed-away", p.hidden);
       });
       rebuildDockRow();
       window.dispatchEvent(new Event("resize"));
     }
+
+    // ---- section API used by View → Windows ------------------------------
+    // A "section" is a core (non-closable) panel: it can be placed in one of
+    // the nine slots, floated, or parked as unplaced. Unlike closePanel these
+    // never destroy the view — an unplaced section keeps running, it just
+    // isn't in the dock row.
+    function listSections() {
+      return DOCK_ORDER.map(function (id) {
+        var p = panels[id];
+        if (!p) return null;
+        var parts = slotOf(p).split(":");
+        return { id: id, title: p.title || id, mode: p.mode, hidden: !!p.hidden,
+                 slot: slotOf(p), column: parts[0], row: parts[1],
+                 placed: !p.hidden && p.mode === "docked", floating: p.mode === "floating" };
+      }).filter(Boolean);
+    }
+
+    function placeSection(id, slot) {
+      var p = panels[id];
+      if (!p) return;
+      if (COLUMNS.indexOf(slot.split(":")[0]) < 0 || ROWS.indexOf(slot.split(":")[1]) < 0) return;
+      p.slot = slot;
+      p.hidden = false;
+      p.el.classList.remove("collapsed-away");
+      if (p.mode === "floating") {
+        setMode(p, "docked");     // setMode rebuilds and saves
+      } else {
+        rebuildDockRow();
+        saveState();
+        window.dispatchEvent(new Event("resize"));
+      }
+    }
+
+    function unplaceSection(id) {
+      var p = panels[id];
+      if (!p) return;
+      if (p.mode === "floating") {
+        p.mode = "docked";
+        p.el.classList.remove("floating");
+        p.el.style.left = p.el.style.top = p.el.style.width = p.el.style.height = p.el.style.zIndex = "";
+        p.toggleBtn.textContent = "⤢"; p.toggleBtn.title = "Float";
+      }
+      p.hidden = true;
+      p.el.classList.add("collapsed-away");
+      // Detach it. rebuildDockRow only ever empties #dockRow, so a section
+      // taken out while floating would otherwise stay sitting in the
+      // floating layer, unstyled and un-closable.
+      if (p.el.parentNode) p.el.parentNode.removeChild(p.el);
+      rebuildDockRow();
+      saveState();
+      window.dispatchEvent(new Event("resize"));
+    }
+
+    function floatSection(id) {
+      var p = panels[id];
+      if (!p) return;
+      p.hidden = false;
+      p.el.classList.remove("collapsed-away");
+      if (p.mode === "floating") { bringToFront(p); notify(); return; }
+      setMode(p, "floating");
+    }
+
+    function onChange(fn) { listeners.push(fn); return function () {
+      var i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); }; }
 
     function init() {
       rebuildDockRow();
       applyLayout(loadState());
     }
 
-    return { createPanel: createPanel, createFloatingOnly: createFloatingOnly, init: init, resetLayout: resetLayout, saveState: saveState, panels: panels };
+    return { createPanel: createPanel, createFloatingOnly: createFloatingOnly, init: init,
+             resetLayout: resetLayout, saveState: saveState, panels: panels,
+             listSections: listSections, placeSection: placeSection, unplaceSection: unplaceSection,
+             floatSection: floatSection, onChange: onChange,
+             COLUMNS: COLUMNS, ROWS: ROWS, ROW_LABELS: ROW_LABELS };
   })();
 
   // =====================================================================
@@ -2813,6 +3022,54 @@
       thinkingBox.classList.add("done");
       thinkingBox = null;
     }
+    // Permission modal for the request_external_read tool. The server sends
+    // {type:"permission_request", request_id, path, reason}; we render a
+    // blocking overlay and reply with {type:"permission_response", ...}.
+    // Self-contained DOM so it doesn't fight the shared #modalBox — the
+    // user may be halfway through Settings when the agent asks.
+    function showPermissionModal(req) {
+      var overlay = document.createElement("div");
+      overlay.setAttribute("data-perm-req", req.request_id);
+      overlay.style.cssText = "position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.55);";
+      var box = document.createElement("div");
+      box.style.cssText = "width:520px;max-width:92vw;background:#14162a;border:1px solid rgba(255,255,255,0.14);border-radius:10px;padding:20px 22px;box-shadow:0 20px 60px rgba(0,0,0,0.5);color:#cfd3ec;font-size:13px;line-height:1.55;";
+      box.innerHTML =
+        "<h3 style='margin:0 0 12px;font-size:14px;color:#eef1ff;'>DariusAI wants to read outside the sandbox</h3>" +
+        "<div style='font-size:11.5px;color:#9aa1c7;margin-bottom:6px;'>PATH (this folder + all subfolders, read-only, this turn only)</div>" +
+        "<div style='background:#0d0f20;padding:8px 10px;border-radius:6px;font-family:monospace;font-size:12px;color:#a0d8ff;word-break:break-all;margin-bottom:14px;'></div>" +
+        "<div style='font-size:11.5px;color:#9aa1c7;margin-bottom:6px;'>REASON</div>" +
+        "<div style='background:#0d0f20;padding:8px 10px;border-radius:6px;font-size:12.5px;margin-bottom:18px;'></div>" +
+        "<div style='font-size:11.5px;color:#6c7399;margin-bottom:14px;'>Writes and destructive commands (rm, del, mv, git reset, …) stay refused inside this folder. Next message clears the grant.</div>" +
+        "<div style='display:flex;gap:10px;justify-content:flex-end;'>" +
+          "<button data-deny style='background:#2a2e4d;border:1px solid rgba(255,255,255,0.15);color:#eef1ff;border-radius:6px;padding:7px 16px;font-size:12px;cursor:pointer;'>Deny</button>" +
+          "<button data-allow style='background:#3b5bdb;border:none;color:#fff;border-radius:6px;padding:7px 18px;font-size:12px;cursor:pointer;'>Allow for this turn</button>" +
+        "</div>";
+      box.children[2].textContent = req.path || "(no path)";
+      box.children[4].textContent = req.reason || "(no reason given)";
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+
+      var answered = false;
+      function answer(allow) {
+        if (answered) return;
+        answered = true;
+        try {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "permission_response", request_id: req.request_id, allow: !!allow }));
+          }
+        } catch (e) {}
+        overlay.remove();
+      }
+      box.querySelector("[data-allow]").addEventListener("click", function () { answer(true); });
+      box.querySelector("[data-deny]").addEventListener("click", function () { answer(false); });
+      // Escape denies — a stuck modal must not trap the user.
+      overlay.tabIndex = -1;
+      overlay.addEventListener("keydown", function (ev) {
+        if (ev.key === "Escape") { ev.preventDefault(); answer(false); }
+      });
+      setTimeout(function () { overlay.focus(); }, 0);
+    }
+
     function connect() {
       var proto = location.protocol === "https:" ? "wss:" : "ws:";
       ws = new WebSocket(proto + "//" + location.host + "/ws/chat");
@@ -2839,6 +3096,8 @@
           renderStats(data);
         } else if (data.type === "context_compacted") {
           renderCompactBanner(data);
+        } else if (data.type === "permission_request") {
+          showPermissionModal(data);
         } else if (data.type === "command_result") {
           cmdOnResult(data);
         } else if (data.type === "command_picker") {
@@ -3974,6 +4233,433 @@
   }
 
   // =====================================================================
+  // Blender connection light — polls /api/blender/status and paints the
+  // title-bar dot. The three states are the server's, not the page's: the
+  // probe has to tell "nothing listening" from "something wrong on the
+  // port", and only the server can do that cheaply.
+  // =====================================================================
+  var blenderStatus = { state: "red", detail: "checking…", endpoint: "", tools: [] };
+
+  function paintBlenderLight(status) {
+    blenderStatus = status;
+    var el = document.getElementById("blenderStatus");
+    if (!el) return;
+    el.classList.remove("state-red", "state-orange", "state-green");
+    el.classList.add("state-" + (status.state || "red"));
+    var label = status.state === "green" ? "Blender connected"
+              : status.state === "orange" ? "Blender: problem"
+              : "Blender not connected";
+    el.title = label + " — " + (status.detail || "") +
+               "\n" + (status.endpoint || "") + "\nClick for details.";
+  }
+
+  function pollBlender() {
+    if (document.hidden) return;
+    fetch("/api/blender/status")
+      .then(function (r) { return r.json(); })
+      .then(paintBlenderLight)
+      .catch(function () {
+        // Our own server is unreachable — say nothing about Blender we
+        // cannot actually know.
+        paintBlenderLight({ state: "red", detail: "DariusAI's server did not answer",
+                            endpoint: blenderStatus.endpoint, tools: [] });
+      });
+  }
+
+  function renderBlenderModal(box) {
+    box.classList.add("wide");
+
+    function draw(status, install, busy) {
+      var state = (status && status.state) || "red";
+      var tools = (status && status.tools) || [];
+      var found = install && install.found;
+      box.innerHTML =
+        "<h3>Blender</h3>" +
+        "<div class='bl-row'><span class='k'>Connection</span>" +
+          "<span class='v bl-state " + state + "'>" + state.toUpperCase() + "</span></div>" +
+        "<div class='bl-row'><span class='k'>Detail</span><span class='v'>" +
+          escapeHtml((status && status.detail) || "") + "</span></div>" +
+        "<div class='bl-row'><span class='k'>Endpoint</span><span class='v'>" +
+          escapeHtml((status && status.endpoint) || "") + "</span></div>" +
+        (found
+          ? "<div class='bl-row'><span class='k'>Blender</span><span class='v'>" +
+              escapeHtml(install.version || "?") + " — " + escapeHtml(install.executable || "") +
+            "</span></div>" +
+            "<div class='bl-row'><span class='k'>Add-on</span><span class='v'>" +
+              (install.installed ? "installed" : "not installed yet") + "</span></div>"
+          : "<div class='bl-row'><span class='k'>Blender</span><span class='v'>" +
+              escapeHtml((install && install.detail) || "not found on this machine") +
+            "</span></div>") +
+        (tools.length
+          ? "<h4>Tools</h4><div class='bl-tools'>" +
+            tools.map(function (t) { return "<span>" + escapeHtml(t) + "</span>"; }).join("") +
+            "</div>"
+          : "") +
+        (busy ? "<div class='bl-busy'>" + escapeHtml(busy) + "</div>" : "") +
+        "<div class='layout-opt-actions'>" +
+          (found && !install.installed ? "<button id='blInstall'>Install add-on</button>" : "") +
+          (found && install.installed ? "<button id='blInstall'>Reinstall add-on</button>" : "") +
+          (found ? "<button id='blLaunch'>Launch Blender</button>" : "") +
+          "<button id='blReconnect'>Reconnect</button>" +
+          "<button data-close>Close</button>" +
+        "</div>";
+
+      box.querySelectorAll("[data-close]").forEach(function (b) {
+        b.addEventListener("click", closeModal);
+      });
+
+      var reconnect = box.querySelector("#blReconnect");
+      if (reconnect) reconnect.addEventListener("click", function () {
+        draw(status, install, "connecting…");
+        fetch("/api/blender/connect", { method: "POST" })
+          .then(function (r) { return r.json(); })
+          .then(function (s) { paintBlenderLight(s); load(); })
+          .catch(function () { load(); });
+      });
+
+      var launch = box.querySelector("#blLaunch");
+      if (launch) launch.addEventListener("click", function () {
+        draw(status, install, "starting Blender — the light turns green once the add-on is up…");
+        fetch("/api/blender/launch", { method: "POST" }).finally(function () {
+          setTimeout(load, 4000);
+        });
+      });
+
+      var install_btn = box.querySelector("#blInstall");
+      if (install_btn) install_btn.addEventListener("click", function () {
+        // Runs Blender once headless to enable the add-on: tens of
+        // seconds, so say so rather than looking hung.
+        draw(status, install, "installing — this runs Blender once and can take a minute…");
+        fetch("/api/blender/install", { method: "POST" })
+          .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+          .then(function (res) {
+            if (!res.ok) { draw(status, install, "install failed: " + (res.d.detail || "")); return; }
+            load(res.d.enabled ? "installed and enabled"
+                               : "installed — enable it in Blender's preferences");
+          })
+          .catch(function (e) { draw(status, install, "install failed: " + e.message); });
+      });
+    }
+
+    function load(busy) {
+      fetch("/api/blender/info")
+        .then(function (r) { return r.json(); })
+        .then(function (info) {
+          paintBlenderLight(info.bridge);
+          draw(info.bridge, info.install, busy);
+        })
+        .catch(function (e) { draw(blenderStatus, null, "could not read status: " + e.message); });
+    }
+
+    draw(blenderStatus, null, "loading…");
+    load();
+  }
+
+  // =====================================================================
+  // Console — the app's own activity, live. Same /ws/events bus the neural
+  // view animates from, but rendered as text: every tool call, brain search,
+  // skill use, node edit and file save the agent actually performs, plus
+  // client-side errors that would otherwise only exist in devtools.
+  // =====================================================================
+  function buildConsoleView(container) {
+    var wrap = document.createElement("div");
+    wrap.className = "cons-wrap";
+    wrap.innerHTML =
+      "<div class='cons-bar'>" +
+        "<span class='live-dot' id='consDot'></span>" +
+        "<input id='consFilter' placeholder='filter…' style='width:120px'>" +
+        "<button id='consPause'>Pause</button>" +
+        "<button id='consClear'>Clear</button>" +
+        "<span style='margin-left:auto' id='consCount'>0 events</span>" +
+      "</div>" +
+      "<div class='cons-out' id='consOut'></div>";
+    container.appendChild(wrap);
+
+    var out = wrap.querySelector("#consOut");
+    var dot = wrap.querySelector("#consDot");
+    var countEl = wrap.querySelector("#consCount");
+    var filterEl = wrap.querySelector("#consFilter");
+    var MAX_LINES = 1500;
+    var paused = false, filter = "", total = 0;
+    var pending = [];   // events that arrived while paused
+
+    // What an event is *about*, in one line. The bus carries a grab-bag of
+    // shapes, so pick the fields that name the thing acted on and fall back
+    // to the raw payload rather than printing an empty line.
+    function describe(ev) {
+      var bits = [];
+      ["label", "path", "query", "tool", "message", "error", "text", "id"].forEach(function (k) {
+        if (ev[k] && bits.indexOf(String(ev[k])) < 0) bits.push(String(ev[k]));
+      });
+      if (!bits.length) {
+        var rest = {};
+        Object.keys(ev).forEach(function (k) {
+          if (k !== "kind" && k !== "replay" && k !== "ts") rest[k] = ev[k];
+        });
+        var keys = Object.keys(rest);
+        if (keys.length) { try { bits.push(JSON.stringify(rest)); } catch (e) {} }
+      }
+      return bits.join(" · ");
+    }
+
+    function classOf(kind) {
+      if (/error|fail|denied/i.test(kind)) return "err";
+      if (/warn/i.test(kind)) return "warn";
+      if (/learned|used|saved|logged|done/i.test(kind)) return "ok";
+      return "";
+    }
+
+    function stamp() {
+      var d = new Date();
+      function p(n) { return (n < 10 ? "0" : "") + n; }
+      return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+    }
+
+    function render(kind, msg, cls, replay) {
+      var line = document.createElement("div");
+      line.className = "cons-line " + (cls || "") + (replay ? " replay" : "");
+      var t = document.createElement("span"); t.className = "t"; t.textContent = stamp();
+      var k = document.createElement("span"); k.className = "k"; k.textContent = kind;
+      var m = document.createElement("span"); m.className = "m"; m.textContent = msg;
+      line.appendChild(t); line.appendChild(k); line.appendChild(m);
+      line.dataset.search = (kind + " " + msg).toLowerCase();
+      if (filter && line.dataset.search.indexOf(filter) < 0) line.style.display = "none";
+
+      // Stick to the bottom only when already there, so scrolling back to
+      // read something isn't yanked away by the next event.
+      var atBottom = out.scrollHeight - out.scrollTop - out.clientHeight < 30;
+      out.appendChild(line);
+      while (out.childElementCount > MAX_LINES) out.removeChild(out.firstChild);
+      if (atBottom) out.scrollTop = out.scrollHeight;
+
+      total++;
+      countEl.textContent = total + (total === 1 ? " event" : " events");
+    }
+
+    function add(kind, msg, cls, replay) {
+      if (paused) {
+        pending.push([kind, msg, cls, replay]);
+        if (pending.length > MAX_LINES) pending.shift();
+        countEl.textContent = "paused · " + pending.length + " queued";
+        return;
+      }
+      render(kind, msg, cls, replay);
+    }
+
+    function onEvent(ev) {
+      var kind = ev.kind || ev.type || "event";
+      add(kind, describe(ev), classOf(kind), !!ev.replay);
+    }
+
+    filterEl.addEventListener("input", function () {
+      filter = filterEl.value.trim().toLowerCase();
+      Array.prototype.forEach.call(out.children, function (line) {
+        line.style.display = (!filter || line.dataset.search.indexOf(filter) >= 0) ? "" : "none";
+      });
+    });
+    var pauseBtn = wrap.querySelector("#consPause");
+    pauseBtn.addEventListener("click", function () {
+      paused = !paused;
+      pauseBtn.classList.toggle("on", paused);
+      pauseBtn.textContent = paused ? "Resume" : "Pause";
+      if (!paused) {
+        var queued = pending.splice(0, pending.length);
+        queued.forEach(function (a) { render(a[0], a[1], a[2], a[3]); });
+      }
+    });
+    wrap.querySelector("#consClear").addEventListener("click", function () {
+      out.innerHTML = ""; total = 0; countEl.textContent = "0 events";
+    });
+
+    var ws = null;
+    function connect() {
+      try {
+        var proto = location.protocol === "https:" ? "wss:" : "ws:";
+        ws = new WebSocket(proto + "//" + location.host + "/ws/events");
+        ws.onopen = function () { dot.style.background = "#6ee7b7"; };
+        ws.onmessage = function (e) { try { onEvent(JSON.parse(e.data)); } catch (err) {} };
+        ws.onerror = function () { dot.style.background = "#f87171"; };
+        ws.onclose = function () {
+          dot.style.background = "#f87171";
+          add("console", "event stream disconnected — retrying", "warn");
+          setTimeout(connect, 2000);
+        };
+      } catch (e) { setTimeout(connect, 2000); }
+    }
+    connect();
+
+    // Errors in the page itself are app activity too — without this they are
+    // invisible unless devtools happens to be open, which for a packaged
+    // desktop window it never is.
+    window.addEventListener("error", function (e) {
+      add("client error", (e.message || "error") + (e.filename ? " (" + e.filename + ":" + e.lineno + ")" : ""), "err");
+    });
+    window.addEventListener("unhandledrejection", function (e) {
+      var r = e.reason;
+      add("client error", (r && (r.message || r)) + "", "err");
+    });
+
+    return { log: add };
+  }
+
+  // =====================================================================
+  // Terminal — a real shell, wired to /ws/terminal on the server. Commands
+  // run in the project directory, output streams back as it is produced,
+  // Ctrl-C kills the running process, and `cd` moves the session for real.
+  // =====================================================================
+  function buildTerminalView(container) {
+    var wrap = document.createElement("div");
+    wrap.className = "term-wrap";
+    wrap.innerHTML =
+      "<div class='term-bar'>" +
+        "<span class='live-dot' id='termDot'></span>" +
+        "<span class='term-cwd' id='termCwd'>connecting…</span>" +
+        "<span id='termShell' style='color:#4b5170'></span>" +
+        "<span style='margin-left:auto'></span>" +
+        "<button id='termStop' disabled>Stop</button>" +
+        "<button id='termClear'>Clear</button>" +
+      "</div>" +
+      "<div class='term-out' id='termOut'></div>" +
+      "<div class='term-in'><span class='ps' id='termPs'>$</span>" +
+        "<input id='termInput' spellcheck='false' autocomplete='off' placeholder='type a command…'></div>";
+    container.appendChild(wrap);
+
+    var out = wrap.querySelector("#termOut");
+    var dot = wrap.querySelector("#termDot");
+    var cwdEl = wrap.querySelector("#termCwd");
+    var shellEl = wrap.querySelector("#termShell");
+    var input = wrap.querySelector("#termInput");
+    var stopBtn = wrap.querySelector("#termStop");
+    var MAX_NODES = 900;
+    var running = false, ws = null, ready = false;
+    // Whether this page has *ever* reached the backend. A socket that never
+    // opens means something different from one that dropped, and the two
+    // used to look identical ("retrying…" forever).
+    var everReady = false, warned = false;
+    var history = [], histIdx = -1;
+
+    function write(text, cls) {
+      if (!text) return;
+      var atBottom = out.scrollHeight - out.scrollTop - out.clientHeight < 30;
+      var span = document.createElement("span");
+      if (cls) span.className = cls;
+      span.textContent = text;
+      out.appendChild(span);
+      while (out.childElementCount > MAX_NODES) out.removeChild(out.firstChild);
+      if (atBottom) out.scrollTop = out.scrollHeight;
+    }
+
+    function setRunning(v) {
+      running = v;
+      stopBtn.disabled = !v;
+      input.placeholder = v ? "stdin — Enter to send · Ctrl-C to stop" : "type a command… (--info, --help)";
+    }
+
+    function send(msg) {
+      if (ws && ws.readyState === 1) { ws.send(JSON.stringify(msg)); return true; }
+      write("\nnot connected to the terminal backend\n", "err");
+      return false;
+    }
+
+    function connect() {
+      try {
+        var proto = location.protocol === "https:" ? "wss:" : "ws:";
+        ws = new WebSocket(proto + "//" + location.host + "/ws/terminal");
+        ws.onopen = function () { dot.style.background = "#6ee7b7"; };
+        ws.onmessage = function (e) {
+          var m;
+          try { m = JSON.parse(e.data); } catch (err) { return; }
+          if (m.type === "ready") {
+            var first = !everReady;
+            ready = true; everReady = true; warned = false;
+            cwdEl.textContent = m.cwd; cwdEl.title = m.cwd;
+            shellEl.textContent = m.shell || "";
+            setRunning(false);
+            // Built-ins are invisible otherwise — say once that they exist.
+            if (first) write("DariusAI terminal · --info for specs · --help for built-ins\n\n", "sys");
+          } else if (m.type === "out") {
+            write(m.data);
+          } else if (m.type === "err") {
+            write(m.data, "err");
+          } else if (m.type === "exit") {
+            if (m.cwd) { cwdEl.textContent = m.cwd; cwdEl.title = m.cwd; }
+            if (m.code) write("\n[exit " + m.code + "]\n", "err");
+            else write("\n", "sys");
+            setRunning(false);
+            input.focus();
+          }
+        };
+        ws.onclose = function () {
+          dot.style.background = "#f87171"; ready = false; setRunning(false);
+          if (everReady) {
+            cwdEl.textContent = "disconnected — retrying";
+          } else {
+            // The page is newer than the server process behind it: the HTML
+            // is read off disk on every load, but /ws/terminal only exists
+            // in a server that was started after this build. Reloading the
+            // page will not fix that — only restarting the app will, so say
+            // so instead of retrying silently forever.
+            cwdEl.textContent = "no terminal backend — restart DariusAI";
+            cwdEl.title = "The running server predates this build and has no /ws/terminal route.";
+            if (!warned) {
+              warned = true;
+              write("The terminal backend isn't available on the running server.\n" +
+                    "Close and reopen DariusAI to pick up this build — reloading the page is not enough.\n", "err");
+            }
+          }
+          setTimeout(connect, 2000);
+        };
+        ws.onerror = function () { dot.style.background = "#f87171"; };
+      } catch (e) { setTimeout(connect, 2000); }
+    }
+    connect();
+
+    function submit() {
+      var text = input.value;
+      if (running) {
+        // A process is live: the line is stdin for it, not a new command.
+        write(text + "\n", "cmd");
+        send({ type: "input", data: text + "\n" });
+        input.value = "";
+        return;
+      }
+      var cmd = text.trim();
+      if (!cmd) return;
+      if (cmd === "clear" || cmd === "cls") { out.innerHTML = ""; input.value = ""; return; }
+      history.push(cmd); histIdx = history.length;
+      write("$ " + cmd + "\n", "cmd");
+      input.value = "";
+      if (send({ type: "run", cmd: cmd })) setRunning(true);
+    }
+
+    input.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") { ev.preventDefault(); submit(); return; }
+      if ((ev.ctrlKey || ev.metaKey) && String(ev.key).toLowerCase() === "c" && !window.getSelection().toString()) {
+        // Ctrl-C with nothing selected means "kill it", as in any shell.
+        if (running) { ev.preventDefault(); write("^C\n", "sys"); send({ type: "signal" }); }
+        return;
+      }
+      if (ev.key === "ArrowUp" && history.length) {
+        histIdx = Math.max(0, histIdx - 1); input.value = history[histIdx] || ""; ev.preventDefault();
+      } else if (ev.key === "ArrowDown" && history.length) {
+        histIdx = Math.min(history.length, histIdx + 1);
+        input.value = histIdx === history.length ? "" : history[histIdx];
+        ev.preventDefault();
+      }
+    });
+    stopBtn.addEventListener("click", function () {
+      if (running) { write("^C\n", "sys"); send({ type: "signal" }); }
+    });
+    wrap.querySelector("#termClear").addEventListener("click", function () { out.innerHTML = ""; });
+    // Clicking anywhere in the output puts the caret back where typing works.
+    out.addEventListener("mouseup", function () {
+      if (!window.getSelection().toString()) input.focus();
+    });
+
+    return { focus: function () { input.focus(); } };
+  }
+
+  // =====================================================================
   // Modals — Settings / Help / About
   // =====================================================================
   var MODALS = {
@@ -3984,7 +4670,9 @@
         "<dt>Panels</dt><dd>Click the ⤢ button on a panel's title bar to pop it out into a floating, resizable window; click ⧉ to dock it back. Drag a floating panel by its title bar; resize from the bottom-right corner. Drag the divider between docked panels to resize them.</dd>" +
         "<dt>Chat code blocks</dt><dd>Click ⤢ Pop out on a code block to keep it open as its own floating panel. Code blocks in older messages auto-collapse — click to re-expand.</dd>" +
         "<dt>Editor</dt><dd>Ctrl-F to find in the open file. Multiple files open as tabs.</dd>" +
-        "<dt>Layout</dt><dd>Your panel arrangement is saved automatically. File → Reset Window Layout restores the default.</dd>" +
+        "<dt>Console</dt><dd>Live feed of what the agent is doing — tool calls, brain searches, skills used, files saved — plus any client-side errors. Filter, pause and clear from its toolbar.</dd>" +
+        "<dt>Terminal</dt><dd>A real shell in the project directory. Enter runs a command, Ctrl-C (or Stop) kills it, ↑/↓ walks history, <code>cd</code> moves the session, <code>clear</code> wipes the output. While a command is running your input is sent to it as stdin. Built-ins: <code>--info</code> for DariusAI's specs, <code>--version</code> for the version, <code>--help</code> for the full list.</dd>" +
+        "<dt>Layout</dt><dd>Your panel arrangement is saved automatically. View → Windows… lists every section and lets you drag one onto a slot; View → Layout Options… shows and hides them; View → Reset Layout restores the default.</dd>" +
         "</dl></div><div class='close-row'><button data-close>Close</button></div>";
     },
     about: function () {
@@ -3998,13 +4686,18 @@
         "<div class='close-row'><button data-close>Close</button></div>";
     },
   };
-  var MODELESS = { settings: true, newproject: true }; // stays open while you work in the rest of the app
+  // Windows joins the modeless set: you arrange sections while watching the
+  // real panels move behind the dialog, which is the whole point of it.
+  var MODELESS = { settings: true, newproject: true, windows: true };
   var settingsPos = null;            // remembered between opens, so it reopens where you left it
 
   function openModal(name) {
     var root = document.getElementById("modalRoot");
     var box = document.getElementById("modalBox");
     box.classList.remove("wide");
+    // Whatever was in the box is about to be replaced; drop its live
+    // subscription so a stale renderer can't keep redrawing the new content.
+    if (windowsUnsub) { windowsUnsub(); windowsUnsub = null; }
     root.classList.toggle("modeless", !!MODELESS[name]);
     if (name === "settings") {
       renderSettingsModal(box);
@@ -4012,6 +4705,10 @@
       renderNewProjectModal(box);
     } else if (name === "layout-options") {
       renderLayoutOptionsModal(box);
+    } else if (name === "windows") {
+      renderWindowsModal(box);
+    } else if (name === "blender") {
+      renderBlenderModal(box);
     } else {
       box.removeAttribute("style");
       box.innerHTML = MODALS[name]();
@@ -4020,7 +4717,10 @@
     root.classList.add("open");
     if (MODELESS[name]) placeModelessBox(box); // after .open, so the box has a measurable size
   }
-  function closeModal() { document.getElementById("modalRoot").classList.remove("open"); }
+  function closeModal() {
+    document.getElementById("modalRoot").classList.remove("open");
+    if (windowsUnsub) { windowsUnsub(); windowsUnsub = null; }
+  }
   document.getElementById("modalRoot").addEventListener("click", function (ev) {
     // Click-outside-to-dismiss only applies to the true modals — for the
     // modeless panel a stray click in the app must never throw away a
@@ -4264,48 +4964,225 @@
     });
   }
 
-  // ---- Layout Options: panel reset + 3D-scene rendering toggles --------
-  // Lives under Settings → Layout Options… and replaces the old single-action
-  // "Reset Window Layout" entry. The two 3D-scene toggles (labels and the
-  // energy-ball animations) are routed through window.__neural, exposed by
-  // buildNeuralView. Reset Layout is the same escape hatch it used to be.
+  // ---- Layout Options (View → Layout Options…) -------------------------
+  // Layout-only now: which sections are visible and whether each is docked or
+  // floating. The 3D-scene toggles that used to live here moved to Settings →
+  // Preferences, where the rest of the app's behaviour settings are, and Reset
+  // Layout is also its own View menu entry.
+  function confirmResetLayout() {
+    if (!confirm("Reset the panel layout to its default? Pop-outs close and any custom arrangement is lost.")) return false;
+    WM.resetLayout();
+    return true;
+  }
+
   function renderLayoutOptionsModal(box) {
-    box.innerHTML =
-      "<h3>Layout Options</h3>" +
-      "<div class='body' style='font-size:12px;color:#8b93b8'>Tweak the 3D scene and restore the default panel arrangement.</div>" +
-      "<label class='layout-opt-row'>" +
-        "<input type='checkbox' id='optShowLabels' " + (window.__neural && window.__neural.getShowLabels() ? "checked" : "") + ">" +
-        "<div><span class='lbl'>Show node labels in 3D scene</span>" +
-        "<span class='desc'>When off, node names are hidden — only the glowing cores and edges remain. Useful for a clean overview.</span></div>" +
-      "</label>" +
-      "<label class='layout-opt-row'>" +
-        "<input type='checkbox' id='optShowAnimations' " + (window.__neural && window.__neural.getShowAnimations() ? "checked" : "") + ">" +
-        "<div><span class='lbl'>Show node animations</span>" +
-        "<span class='desc'>Toggle the moving 'balls of energy' — orbiting electrons, brain pulse halo, traveling edge pulses, live-wire charges. Off = static rendering.</span></div>" +
-      "</label>" +
-      "<div class='layout-opt-actions'>" +
-        "<button class='danger' id='optReset'>Reset Layout…</button>" +
-        "<button data-close>Close</button>" +
-      "</div>";
-    box.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
+    function draw() {
+      var sections = WM.listSections();
+      var rows = sections.map(function (s) {
+        return "<div class='layout-opt-row' style='align-items:center'>" +
+          "<input type='checkbox' data-vis='" + escapeHtml(s.id) + "'" + (s.hidden ? "" : " checked") + ">" +
+          "<div style='flex:1 1 auto'><span class='lbl'>" + escapeHtml(s.title) + "</span>" +
+          "<span class='desc'>" + (s.hidden ? "not placed" :
+            (s.floating ? "floating window" : "docked · " + escapeHtml(s.column) + " column · " + escapeHtml(s.row))) +
+          "</span></div>" +
+          "<button data-mode='" + escapeHtml(s.id) + "' style='background:#1b1e38;border:1px solid rgba(255,255,255,0.15);padding:4px 10px'" +
+            (s.hidden ? " disabled" : "") + ">" + (s.floating ? "Dock" : "Float") + "</button>" +
+        "</div>";
+      }).join("");
 
-    // Reset Layout: ask first (the existing resetLayout() drops everything),
-    // and remember the click target — confirm() blocks the JS thread so by
-    // the time we return, the original button reference may have detached.
-    box.querySelector("#optReset").addEventListener("click", function () {
-      if (!confirm("Reset the panel layout to its default? Pop-outs close and any custom arrangement is lost.")) return;
-      WM.resetLayout();
-      closeModal();
-    });
+      box.innerHTML =
+        "<h3>Layout Options</h3>" +
+        "<div class='body' style='font-size:12px;color:#8b93b8'>Show or hide each section and choose whether it is docked in the workspace or floating. " +
+        "To place a section in a particular slot, use <b>View → Windows…</b>.</div>" +
+        rows +
+        "<div class='layout-opt-actions'>" +
+          "<button class='danger' id='optReset'>Reset Layout…</button>" +
+          "<button data-close>Close</button>" +
+        "</div>";
+      box.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
+      box.querySelector("#optReset").addEventListener("click", function () {
+        // confirm() blocks the JS thread, so re-read the layout afterwards
+        // rather than trusting anything captured before the prompt.
+        if (confirmResetLayout()) draw();
+      });
+      box.querySelectorAll("[data-vis]").forEach(function (cb) {
+        cb.addEventListener("change", function () {
+          if (cb.checked) WM.placeSection(cb.dataset.vis, sectionSlot(cb.dataset.vis));
+          else WM.unplaceSection(cb.dataset.vis);
+          draw();
+        });
+      });
+      box.querySelectorAll("[data-mode]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var s = WM.listSections().filter(function (x) { return x.id === btn.dataset.mode; })[0];
+          if (!s) return;
+          if (s.floating) WM.placeSection(s.id, s.slot); else WM.floatSection(s.id);
+          draw();
+        });
+      });
+    }
+    draw();
+  }
 
-    var labels = box.querySelector("#optShowLabels");
-    labels.addEventListener("change", function () {
-      if (window.__neural) window.__neural.setShowLabels(labels.checked);
-    });
-    var anims = box.querySelector("#optShowAnimations");
-    anims.addEventListener("change", function () {
-      if (window.__neural) window.__neural.setShowAnimations(anims.checked);
-    });
+  // Where a section should go when it's switched back on without a slot being
+  // picked: wherever it last was, which listSections already resolves through
+  // the defaults.
+  function sectionSlot(id) {
+    var s = WM.listSections().filter(function (x) { return x.id === id; })[0];
+    return (s && s.slot) || "centre:middle";
+  }
+
+  // ---- Windows (View → Windows…) ---------------------------------------
+  // A list of every section on the left, a thumbnail of the workspace on the
+  // right. Drag a section from the list onto a slot in the thumbnail and it
+  // is placed there for real, immediately — the same drag-and-drop the app
+  // itself uses for docking, at map scale. Tiles already on the map can be
+  // dragged between slots, into the floating bay, or back onto the list to
+  // take them out of the layout.
+  var windowsUnsub = null;
+
+  function renderWindowsModal(box) {
+    box.classList.add("wide");
+    var dragging = null;   // { id, ghost } while a section is being dragged
+
+    function draw() {
+      var sections = WM.listSections();
+      var placed = {};     // slot -> tiles
+      var floating = [];
+      sections.forEach(function (s) {
+        if (s.floating) { floating.push(s); return; }
+        if (s.hidden) return;
+        (placed[s.slot] = placed[s.slot] || []).push(s);
+      });
+
+      var chips = sections.map(function (s) {
+        var where = s.hidden ? "not placed" : (s.floating ? "floating" : s.column + " · " + s.row);
+        return "<div class='wm-chip" + (s.hidden ? "" : " placed") + "' data-section='" + escapeHtml(s.id) + "'>" +
+          "<span class='dot'></span><span>" + escapeHtml(s.title) + "</span>" +
+          "<span class='where'>" + escapeHtml(where) + "</span></div>";
+      }).join("");
+
+      var cells = "";
+      WM.ROWS.forEach(function (row) {
+        WM.COLUMNS.forEach(function (col) {
+          var slot = col + ":" + row;
+          var tiles = (placed[slot] || []).map(function (s) {
+            return "<div class='wm-tile' data-section='" + escapeHtml(s.id) + "' title='" + escapeHtml(s.title) + "'>" +
+              "<span>" + escapeHtml(s.title) + "</span><span class='x' data-remove='" + escapeHtml(s.id) + "'>✕</span></div>";
+          }).join("");
+          cells += "<div class='wm-cell' data-slot='" + slot + "' title='" + col + " column · " + row + "'>" + tiles + "</div>";
+        });
+      });
+
+      var bayTiles = floating.map(function (s) {
+        return "<div class='wm-tile' data-section='" + escapeHtml(s.id) + "'>" +
+          "<span>" + escapeHtml(s.title) + "</span><span class='x' data-remove='" + escapeHtml(s.id) + "'>✕</span></div>";
+      }).join("");
+
+      box.innerHTML =
+        "<h3>Windows<span class='drag-hint'>drag to move · stays open while you work</span></h3>" +
+        "<div class='body' style='font-size:12px;color:#8b93b8'>Drag a section from the list onto a slot to load it into the app. " +
+        "Drop a section back on the list to take it out.</div>" +
+        "<div class='wm-wrap'>" +
+          "<div class='wm-col list'><h5>Sections</h5><div class='wm-list' id='wmList'>" +
+            (chips || "<div class='wm-empty'>No sections registered.</div>") +
+          "</div></div>" +
+          "<div class='wm-col mock'><h5>Layout</h5><div class='wm-grid' id='wmGrid'>" + cells + "</div></div>" +
+        "</div>" +
+        "<div class='wm-bay' id='wmBay'><span class='wm-bay-label'>Floating" +
+          (bayTiles ? "" : " — drop here to pop a section out") + "</span>" + bayTiles + "</div>" +
+        "<div class='wm-hint'>Nine slots: three columns × three rows, matching the drop zones you see when dragging a panel in the app. " +
+        "Two sections in the same column stack vertically.</div>" +
+        "<div class='layout-opt-actions'>" +
+          "<button class='danger' id='wmReset'>Reset Layout…</button>" +
+          "<button data-close>Close</button>" +
+        "</div>";
+
+      box.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
+      box.querySelector("#wmReset").addEventListener("click", function () { if (confirmResetLayout()) draw(); });
+      box.querySelectorAll("[data-remove]").forEach(function (x) {
+        x.addEventListener("mousedown", function (ev) { ev.stopPropagation(); });
+        x.addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          WM.unplaceSection(x.dataset.remove);
+          draw();
+        });
+      });
+      box.querySelectorAll("[data-section]").forEach(function (el) {
+        el.addEventListener("mousedown", function (ev) { startDrag(el.dataset.section, ev); });
+      });
+    }
+
+    // ---- drag: list/tile -> slot, bay, or back to the list --------------
+    function startDrag(id, ev) {
+      if (ev.button !== 0) return;
+      ev.preventDefault();
+      var section = WM.listSections().filter(function (s) { return s.id === id; })[0];
+      if (!section) return;
+
+      var ghost = document.createElement("div");
+      ghost.className = "wm-ghost";
+      ghost.textContent = section.title;
+      document.body.appendChild(ghost);
+      dragging = { id: id, ghost: ghost, moved: false };
+      moveGhost(ev.clientX, ev.clientY);
+
+      function hitTest(x, y) {
+        var target = null;
+        box.querySelectorAll(".wm-cell").forEach(function (cell) {
+          var r = cell.getBoundingClientRect();
+          var hit = x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+          cell.classList.toggle("hot", hit);
+          if (hit) target = { kind: "slot", slot: cell.dataset.slot };
+        });
+        var bay = box.querySelector("#wmBay"), list = box.querySelector("#wmList");
+        var br = bay.getBoundingClientRect();
+        var overBay = !target && x >= br.left && x <= br.right && y >= br.top && y <= br.bottom;
+        bay.classList.toggle("hot", overBay);
+        if (overBay) target = { kind: "float" };
+        var lr = list.getBoundingClientRect();
+        var overList = !target && x >= lr.left && x <= lr.right && y >= lr.top && y <= lr.bottom;
+        // Dropping onto the list only means "remove" for something that is
+        // currently in the layout; dragging a chip back where it came from
+        // must not look like a destructive action.
+        var removable = overList && !section.hidden;
+        list.classList.toggle("hot", removable);
+        if (removable) target = { kind: "unplace" };
+        return target;
+      }
+
+      function moveGhost(x, y) {
+        ghost.style.left = (x + 12) + "px";
+        ghost.style.top = (y + 12) + "px";
+      }
+
+      function onMove(e) {
+        dragging.moved = true;
+        moveGhost(e.clientX, e.clientY);
+        dragging.target = hitTest(e.clientX, e.clientY);
+      }
+      function onUp(e) {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        var target = dragging.moved ? hitTest(e.clientX, e.clientY) : null;
+        if (ghost.parentNode) ghost.parentNode.removeChild(ghost);
+        dragging = null;
+        if (target) {
+          if (target.kind === "slot") WM.placeSection(id, target.slot);
+          else if (target.kind === "float") WM.floatSection(id);
+          else if (target.kind === "unplace") WM.unplaceSection(id);
+        }
+        draw();
+      }
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    }
+
+    draw();
+    // Panels dragged in the app itself while this dialog is open must be
+    // reflected here — it is a live map, not a snapshot.
+    if (windowsUnsub) windowsUnsub();
+    windowsUnsub = WM.onChange(function () { if (!dragging) draw(); });
   }
 
   function renderSettingsBody(projectDir, providers, startWithWindows) {
@@ -4345,6 +5222,19 @@
     html += "<h4>Startup</h4><label class='settings-checkbox'>" +
       "<input type='checkbox' id='startWithWindowsCheck'" + (startWithWindows.enabled ? " checked" : "") + "> " +
       "Start DariusAI when Windows starts</label>";
+
+    // Neural View rendering — moved here from Layout Options, which is now
+    // strictly about where panels sit. These are behaviour settings for a
+    // section, so they belong with the rest of the preferences.
+    html += "<h4>Neural View</h4>" +
+      "<label class='settings-checkbox'>" +
+      "<input type='checkbox' id='optShowLabels'" +
+      (window.__neural && window.__neural.getShowLabels() ? " checked" : "") + "> " +
+      "Show node labels in the 3D scene</label>" +
+      "<label class='settings-checkbox'>" +
+      "<input type='checkbox' id='optShowAnimations'" +
+      (window.__neural && window.__neural.getShowAnimations() ? " checked" : "") + "> " +
+      "Show node animations (orbiting electrons, pulses, live wires)</label>";
 
     html += "<h4>External Skills</h4>" +
       "<div style='font-size:11.5px;color:#8b93b8;margin-bottom:7px'>" +
@@ -4434,6 +5324,15 @@
       fetch("/api/start-with-windows", {
         method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: ev.target.checked }),
       }).then(function (r) { return r.json(); }).then(function (data) { ev.target.checked = data.enabled; });
+    });
+
+    var labels = document.getElementById("optShowLabels");
+    if (labels) labels.addEventListener("change", function () {
+      if (window.__neural) window.__neural.setShowLabels(labels.checked);
+    });
+    var anims = document.getElementById("optShowAnimations");
+    if (anims) anims.addEventListener("change", function () {
+      if (window.__neural) window.__neural.setShowAnimations(anims.checked);
     });
   }
 
@@ -4693,6 +5592,8 @@
     "select-all": selectAllInCurrentSurface,
     "find": function () { if (activeCM) activeCM.execCommand("findPersistent"); },
     "show-settings": function () { openModal("settings"); },
+    "show-windows": function () { openModal("windows"); },
+    "reset-layout": function () { confirmResetLayout(); },
     "show-help": function () { openModal("help"); },
     "show-about": function () { openModal("about"); },
   };
@@ -4731,9 +5632,14 @@
   // button would also start dragging the window. Stopping propagation at the
   // button keeps the press from ever reaching that listener (`no-drag` CSS
   // isn't enough — WebView2 doesn't implement app-region at all).
-  document.querySelectorAll("#titlebar .win-btn, #btnReload").forEach(function (btn) {
+  document.querySelectorAll("#titlebar .win-btn, #btnReload, #blenderStatus").forEach(function (btn) {
     btn.addEventListener("mousedown", function (ev) { ev.stopPropagation(); });
   });
+  document.getElementById("blenderStatus").addEventListener("click", function () {
+    openModal("blender");
+  });
+  pollBlender();
+  setInterval(pollBlender, 5000);
   document.getElementById("btnReload").addEventListener("click", function () { location.reload(); });
 
   document.getElementById("btnClose").addEventListener("click", quitApp);
@@ -4777,12 +5683,27 @@
   editorHost.style.position = "absolute"; editorHost.style.inset = "0";
   var editorPanel = WM.createPanel("editor", "Editor", editorHost);
 
+  // Console and Terminal are built at boot like the rest — they connect to
+  // the server straight away so nothing is missed while they are unplaced —
+  // but they start outside the layout until dragged in from View → Windows.
+  var consoleHost = document.createElement("div");
+  consoleHost.style.position = "absolute"; consoleHost.style.inset = "0";
+  var consolePanel = WM.createPanel("console", "Console", consoleHost);
+
+  var terminalHost = document.createElement("div");
+  terminalHost.style.position = "absolute"; terminalHost.style.inset = "0";
+  var terminalPanel = WM.createPanel("terminal", "Terminal", terminalHost);
+
   WM.init();
 
   var neuralApi = buildNeuralView(neuralHost);
   var chatApi = buildChatView(chatHost);
   var editorApi = buildEditorView(editorHost);
+  var consoleApi = buildConsoleView(consoleHost);
+  var terminalApi = buildTerminalView(terminalHost);
   window.__editor = editorApi;
+  window.__console = consoleApi;
+  window.__terminal = terminalApi;
   // Expose the neural API on the window so the Layout Options modal can
   // reach the label/animation toggles without an explicit dependency on the
   // buildNeuralView closure.

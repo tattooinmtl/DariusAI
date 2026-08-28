@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Browser Detection: Simple" description = "Simple code to identify visitor's browser using global variables." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[var ie4 = document.all;
+var ns4 = document.layers;
+var ns6 = document.getElementById && !document.all; 
+]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

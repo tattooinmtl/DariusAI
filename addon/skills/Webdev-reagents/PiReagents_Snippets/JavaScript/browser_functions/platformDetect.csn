@@ -1,0 +1,20 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Platform Detection" description = "Simple code to distinguish between Macintosh and Windows browsers." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function platformDetect()
+{
+  if(navigator.appVersion.indexOf("Win") != -1)
+  {
+    alert("Windows");
+  }
+  else if(navigator.appVersion.indexOf("Mac") != -1)
+  {
+    alert("Macintosh");
+  }
+  else alert("Other");
+}
+]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

@@ -81,11 +81,12 @@ def test_rejected_external_tool_skills_do_not_exist():
         assert not path.exists(), f"rejected skill back on disk: {r}"
 
 
-def test_skill_count_is_92():
-    """The cleanup landed 92 skills — 14 superpowers + 78 addon.
+def test_skill_count_is_93():
+    """The cleanup landed 92 skills — 14 superpowers + 78 addon. The
+    93rd is `gamedev/3dgame`, added with the Blender MCP bridge.
     A regression that adds or removes skills silently is caught here."""
     skills = list(SKILLS_ROOT.glob("*/*/SKILL.md"))
-    assert len(skills) == 92, f"expected 92 skills, got {len(skills)}"
+    assert len(skills) == 93, f"expected 93 skills, got {len(skills)}"
 
 
 def test_skill_count_breakdown_by_group():
@@ -95,7 +96,7 @@ def test_skill_count_breakdown_by_group():
         "agent-orchestration": 5,
         "codebase-starters": 10,
         "design": 4,
-        "gamedev": 6,
+        "gamedev": 7,   # +1: 3dgame, the Blender asset kit
         "languages": 21,
         "ops-and-setup": 6,
         "research-and-web": 2,
@@ -155,15 +156,18 @@ def test_doctrine_references_using_addon_skills():
     assert "invoke_skill" in doctrine.SUPERPOWERS_BOOTSTRAP
 
 
-def test_doctrine_counts_are_accurate():
-    """The doctrine says 14 superpowers + 78 addon = 92 total. A drift
-    in the count is caught here."""
+def test_doctrine_does_not_hardcode_a_skill_count():
+    """The doctrine used to carry a library census ("14 superpowers + 78
+    addon = 92"). It was removed on 2026-08-19: the numbers drifted the
+    moment a skill was added — the library holds 185 today — and a count
+    is not something the model can act on. The doctrine points at the
+    live tree instead, which is always right and costs no prompt bytes.
+    """
     from dariusai.agent import doctrine
     bootstrap = doctrine.SUPERPOWERS_BOOTSTRAP
-    # 14 superpowers
-    assert "14 skills" in bootstrap or "14 " in bootstrap
-    # 78 domain
-    assert "78" in bootstrap, "doctrine must say 78 domain skills"
+    for stale in ("14 skills", "78 more", "92 skills"):
+        assert stale not in bootstrap, f"doctrine re-hardcoded a skill count: {stale!r}"
+    assert "browse_brain" in bootstrap, "doctrine must point at the live tree instead of a count"
 
 
 # ---------------------------------------------------------------------------
@@ -246,11 +250,27 @@ def test_invoke_skill_resolves_every_skill(brain_store):
 
 
 def test_invoke_skill_loads_using_addon_skills_body(brain_store):
-    """The bootstrap skill must return its full body when invoked —
+    """The bootstrap skill must return its full body on `full=True` —
     the model reads it to learn the auto-trigger rules."""
     from dariusai.agent.tools import _invoke_skill
 
-    result = _invoke_skill(brain_store, "using-addon-skills")
+    result = _invoke_skill(brain_store, "using-addon-skills", full=True)
     assert "EXTREMELY-IMPORTANT" in result
     assert "auto-trigger" in result.lower()
     assert "Library Map" in result
+
+
+def test_invoke_skill_distils_a_large_skill_by_default(brain_store):
+    """Default is distillation, not the whole file: a 12 KB bootstrap
+    re-sent on every tool iteration of a 60-iteration turn is the single
+    largest avoidable cost in a chat turn. The model gets the section
+    list plus the passages matching its query, and asks for more if it
+    needs more."""
+    from dariusai.agent.tools import _invoke_skill
+
+    full = _invoke_skill(brain_store, "using-addon-skills", full=True)
+    distilled = _invoke_skill(brain_store, "using-addon-skills",
+                              query="when should I use an addon skill")
+    assert len(distilled) < len(full) / 2
+    assert "Sections:" in distilled
+    assert "full=true" in distilled

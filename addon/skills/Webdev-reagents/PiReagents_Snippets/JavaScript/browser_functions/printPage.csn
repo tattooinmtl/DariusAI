@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Print Page" description = "Code to print the document that contains it." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function printPage() { print(document); }
+]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

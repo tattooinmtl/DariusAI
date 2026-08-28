@@ -1,0 +1,8 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Different Link Color" description = "A link of a different color than the page's link color." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[<a href="#"><font color="#FF0000">xxx</font></a>]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

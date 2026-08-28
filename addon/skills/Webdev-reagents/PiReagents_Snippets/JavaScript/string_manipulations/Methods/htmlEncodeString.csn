@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "HTML Encode String" description = "Performs URL encoding on a given string, converting spaces and other special characters into numeric codes." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function htmlEncodeString (inputString)
+{
+  return escape(inputString);
+}]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

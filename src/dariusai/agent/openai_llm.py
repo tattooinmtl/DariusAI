@@ -238,9 +238,20 @@ class OpenAILLM:
         # and `total_tokens`. We map them to the same shape Anthropic
         # uses so the chat session doesn't care which provider is live.
         usage_obj = payload.get("usage") or {}
+        # OpenAI-shaped providers cache automatically (no cache_control to
+        # send) and report the hit under prompt_tokens_details.cached_tokens
+        # when they support it. Forwarded under the Anthropic field name so
+        # the chat panel has one shape to render. Note the semantics differ:
+        # OpenAI's prompt_tokens *includes* the cached tokens, Anthropic's
+        # input_tokens excludes them — which is why the panel adds the
+        # fields up rather than reading input_tokens alone.
+        details = usage_obj.get("prompt_tokens_details") or {}
+        cached = int(details.get("cached_tokens") or 0)
         usage = {
-            "input_tokens": int(usage_obj.get("prompt_tokens") or 0),
+            "input_tokens": max(int(usage_obj.get("prompt_tokens") or 0) - cached, 0),
             "output_tokens": int(usage_obj.get("completion_tokens") or 0),
+            "cache_read_input_tokens": cached,
+            "cache_creation_input_tokens": 0,
         }
         result["usage"] = usage
         result["context_window"] = self.context_window

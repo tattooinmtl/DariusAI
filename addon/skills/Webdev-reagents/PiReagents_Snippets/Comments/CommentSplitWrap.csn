@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Comment, Multi-Line" description = "Wraps an HTML comment tag around the selection, with a line break before and after the selection." preview="code" type="wrap">
+<insertText location="beforeSelection">
+<![CDATA[<!--
+]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[
+-->]]>
+</insertText>
+</snippet>

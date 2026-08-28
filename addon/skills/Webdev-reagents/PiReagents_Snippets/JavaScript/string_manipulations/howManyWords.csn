@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Count Words" description = "Counts the number of words in a given string." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function howManyWords(inputString)
+{
+  return inputString.split(' ').length;
+}]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

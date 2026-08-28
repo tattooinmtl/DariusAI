@@ -1,0 +1,8 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Development Note" description = "Inserts an HTML comment into the document, with comment text set to 'Development Note'." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[<!-- Development Note -->]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "HTML Unencode String" description = "Performs URL unencoding on a given string, converting numeric codes into spaces and other special characters." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function htmlUnencodeString (inputString)
+{
+  return unescape(inputString);
+}]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

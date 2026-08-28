@@ -1,0 +1,22 @@
+{
+  "name": "skill-hook-creator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Scaffold, validate, install, and dispatch skill hooks and AGENTS.md entry points across 12 AI agent harnesses.",
+  "bin": {
+    "skill-hook-creator": "./tools/install-hook.js"
+  },
+  "scripts": {
+    "validate": "node tools/validate-hook.js hooks/*.json",
+    "list": "node tools/list-hooks.js",
+    "audit": "node tools/audit-hooks.js --harness all",
+    "install-all": "node tools/install-agents-md.js --harness all"
+  },
+  "peerDependenciesMeta": {
+    "toml": { "optional": true },
+    "yaml": { "optional": true }
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

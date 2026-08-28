@@ -1,0 +1,30 @@
+[Unit]
+Description=TripoSR image-to-3D service (CPU)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=triposr
+Group=triposr
+WorkingDirectory=/opt/triposr/repo
+EnvironmentFile=/opt/triposr/triposr.env
+ExecStart=/opt/triposr/venv/bin/python /opt/triposr/server.py
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+
+# CPU inference is heavy; keep it from starving the rest of the box
+Nice=10
+CPUWeight=50
+MemoryHigh=6G
+MemoryMax=8G
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/triposr
+
+[Install]
+WantedBy=multi-user.target

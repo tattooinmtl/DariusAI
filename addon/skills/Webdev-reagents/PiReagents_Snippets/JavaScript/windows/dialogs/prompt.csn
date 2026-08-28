@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Prompt" description = "Displays a Prompt dialog box with a given "String" message and an input field. Returns the contents of the input field." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[prompt(messageStr, inputFieldDefault);
+]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "All Caps" description = "Capitalizes every letter in a given string." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function stringToUppercase(inputString)
+{
+  return inputString.toUpperCase();
+}]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Is Number Int" description = "Determines whether a given string is an integer." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function isNumberFloat(inputString)
+{
+  return (!isNaN(parseInt(inputString))) ? true : false;
+}]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

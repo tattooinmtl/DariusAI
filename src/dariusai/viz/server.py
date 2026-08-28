@@ -15,6 +15,7 @@ import asyncio
 import json
 import re
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +26,7 @@ from pydantic import BaseModel
 
 from .. import VERSION_DISPLAY, __version__
 from ..agent.chat import ChatSession
-from ..agent.sandbox import Sandbox
+from ..agent.sandbox import PermissionBroker, Sandbox
 from ..agent.tools import build_tool_registry
 from ..brain.skill import Skill, Source
 from ..brain.store import CONVERSATIONS_ROOT, COORDINATOR_ID, BrainStore
@@ -42,6 +43,18 @@ _STOP_WORDS = {
     "them", "then", "there", "these", "they", "this", "topic", "turn", "used", "using", "want", "was",
     "what", "when", "where", "which", "with", "would", "your",
 }
+
+
+def _format_uptime(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    days, rest = divmod(seconds, 86400)
+    hours, rest = divmod(rest, 3600)
+    minutes = rest // 60
+    if days:
+        return f"{days}d {hours}h {minutes}m"
+    if hours:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m {seconds % 60}s"
 
 
 def _normalize_subject(text: str) -> str:
@@ -90,6 +103,20 @@ def _find_okf_anchor_id(store: BrainStore) -> str | None:
         if hit.get("category") != "conversation":
             return hit["id"]
     return None
+
+
+def _persist_chat_state(store: BrainStore, session_id: str, snapshot: dict[str, Any]) -> None:
+    """Store one chat session's compact state under `chat_state:<id>`.
+
+    Kilobytes, not megabytes: names of skills consulted, paths touched and
+    the todo list — never message bodies. That is what makes it safe to
+    write on every turn and cheap to read back on reconnect.
+    """
+    try:
+        store.set_setting(f"chat_state:{session_id}", json.dumps(snapshot))
+    except Exception:
+        # State is a convenience; a failed write must never break the turn.
+        pass
 
 
 def _log_conversation_turn(store: BrainStore, turn: dict[str, Any]) -> None:
@@ -322,6 +349,10 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
     app.state.project_dir = resolved_project_dir
     store.set_setting("project_dir", str(app.state.project_dir))
     app.state.llm = llm
+    # Stamped once so the terminal's `--info` can report how long this
+    # process has been up — which is also how you spot an app still running
+    # an older build.
+    app.state.started_at = time.time()
     app.mount("/vendor", StaticFiles(directory=STATIC_DIR / "vendor"), name="vendor")
 
     @app.get("/")
@@ -773,20 +804,116 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
                 await ws.close()
                 return
 
+        sandbox = Sandbox.for_workspace(app.state.project_dir, _workbench_root(store))
+        chat_tools = build_tool_registry(store, sandbox)
+
+        # Attach Blender's tools if it is up right now. Only if: a tool the
+        # model can see but cannot run is worse than one it never had, and
+        # the light already tells the user which of those they are in.
+        try:
+            bridge = _blender_bridge()
+            if bridge.status()["state"] == "green":
+                from ..mcp.registry import register_blender_tools
+                register_blender_tools(chat_tools, bridge, store=store)
+        except Exception:
+            pass
+
         session = ChatSession(
             llm=llm,
             # The workbench, not just the open folder — the agent has to be
             # able to see sibling projects and create new ones for the
             # "all in one" workflow to mean anything. Still confined: an
             # unrelated folder opened from elsewhere stays the only root.
-            tools=build_tool_registry(
-                store, Sandbox.for_workspace(app.state.project_dir, _workbench_root(store))),
+            tools=chat_tools,
             on_turn_complete=lambda turn: _log_conversation_turn(store, turn),
+            # Persist-state step of the loop: a compact record of what each
+            # turn touched (skills consulted, files written, todos) lands in
+            # the brain's settings table, so it survives both skill-payload
+            # eviction and context compaction.
+            state_sink=lambda sid, snapshot: _persist_chat_state(store, sid, snapshot),
         )
         loop = asyncio.get_event_loop()
+
+        # Permission-ask plumbing. A background dispatcher owns the socket's
+        # receive side so incoming permission_response messages can be
+        # routed to the (blocked) tool thread even while a turn is running
+        # — the previous "one await per iteration" shape only saw messages
+        # between turns, which is fine for user prompts but useless for
+        # mid-turn approvals.
+        pending_permissions: dict[str, asyncio.Future] = {}
+        user_msg_queue: asyncio.Queue = asyncio.Queue()
+
+        class WSBroker(PermissionBroker):
+            """Bridges the tool thread's blocking request into the
+            asyncio loop that owns the websocket. The tool thread waits
+            on a Future via run_coroutine_threadsafe; the dispatcher
+            resolves it when the client answers."""
+
+            def request(self_broker, path: str, reason: str) -> bool:  # noqa: N805
+                req_id = uuid.uuid4().hex[:12]
+                fut: asyncio.Future = loop.create_future()
+                pending_permissions[req_id] = fut
+
+                async def _send():
+                    try:
+                        await ws.send_json({
+                            "type": "permission_request",
+                            "request_id": req_id,
+                            "path": path,
+                            "reason": reason,
+                        })
+                    except Exception:
+                        # Client vanished before the modal opened — resolve
+                        # to deny so the tool thread unblocks instead of
+                        # hanging on a socket nobody is listening to.
+                        pending_permissions.pop(req_id, None)
+                        if not fut.done():
+                            fut.set_result(False)
+
+                asyncio.run_coroutine_threadsafe(_send(), loop)
+                try:
+                    return asyncio.run_coroutine_threadsafe(
+                        asyncio.wait_for(asyncio.shield(fut), timeout=300), loop
+                    ).result()
+                except (asyncio.TimeoutError, Exception):
+                    pending_permissions.pop(req_id, None)
+                    return False
+
+        sandbox.broker = WSBroker()
+
+        async def _dispatch_incoming():
+            """Consume the socket and either route permission responses to
+            the pending future or push user prompts onto the queue the main
+            loop drains. Exits (via WebSocketDisconnect) drop a sentinel
+            so the main loop can wake up and shut down cleanly."""
+            try:
+                while True:
+                    raw_in = await ws.receive_text()
+                    parsed_in: dict[str, Any] | None = None
+                    try:
+                        p = json.loads(raw_in)
+                        if isinstance(p, dict):
+                            parsed_in = p
+                    except (ValueError, TypeError):
+                        pass
+                    if isinstance(parsed_in, dict) and parsed_in.get("type") == "permission_response":
+                        req_id = str(parsed_in.get("request_id", ""))
+                        fut = pending_permissions.pop(req_id, None)
+                        if fut is not None and not fut.done():
+                            fut.set_result(bool(parsed_in.get("allow")))
+                        continue
+                    await user_msg_queue.put(raw_in)
+            except WebSocketDisconnect:
+                await user_msg_queue.put(None)
+            except Exception:
+                await user_msg_queue.put(None)
+
+        dispatcher_task = asyncio.create_task(_dispatch_incoming())
         try:
             while True:
-                raw = await ws.receive_text()
+                raw = await user_msg_queue.get()
+                if raw is None:
+                    raise WebSocketDisconnect
                 # The UI's [⚡ Compact] button (and the auto-compaction
                 # hook) sends `{"type": "compact"}` over the same socket;
                 # intercept it before treating the payload as a user
@@ -839,13 +966,71 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
                         request_id=cmd_req_id,
                         emit_log=lambda ev: ws.send_json(ev),
                     )
+
+                    # Capture the WS payload run_command emits so the WS
+                    # layer can perform any *server-side* side_effects
+                    # after the handler returns. Most side_effect keys
+                    # are pure display hints (open a panel, change a
+                    # theme) and round-trip to the client as-is; only a
+                    # few — currently `reload_llm` and `cd` — represent
+                    # server-only state the client cannot mutate itself.
+                    captured_payload: dict[str, Any] = {}
+
+                    async def _capture_send(payload):
+                        captured_payload.clear()
+                        captured_payload.update(payload)
+
                     await _run_command(
                         ctx=cmd_ctx,
                         name=cmd_name,
                         args=cmd_args,
                         request_id=cmd_req_id,
-                        ws_send=ws.send_json,
+                        ws_send=_capture_send,
                     )
+
+                    # Forward the handler's own result to the client.
+                    await ws.send_json(captured_payload)
+
+                    side_effect = captured_payload.get("side_effect") or {}
+
+                    # `reload_llm`: rebuild the LLM the chat session
+                    # uses; emit llm_reloaded so the client can refresh
+                    # its own UI (model badge, etc.).
+                    if side_effect.get("reload_llm"):
+                        try:
+                            from ..agent.llm import build_llm
+                            new_llm = build_llm(store)
+                            app.state.llm = new_llm
+                            await ws.send_json({
+                                "type": "llm_reloaded",
+                                "request_id": cmd_req_id,
+                            })
+                        except Exception as exc:
+                            await ws.send_json({
+                                "type": "llm_reload_failed",
+                                "request_id": cmd_req_id,
+                                "message": f"{type(exc).__name__}: {exc}",
+                            })
+
+                    # `cd`: change the active project root, persist
+                    # the new root via settings, and tell the client.
+                    if "cd" in side_effect:
+                        from pathlib import Path as _Path
+                        new_root = (
+                            _Path(app.state.project_dir)
+                            / side_effect["cd"]
+                        ).resolve()
+                        app.state.project_dir = new_root
+                        try:
+                            store.set_setting("project_dir", str(new_root))
+                        except Exception:
+                            pass
+                        await ws.send_json({
+                            "type": "project_dir_changed",
+                            "request_id": cmd_req_id,
+                            "path": str(new_root),
+                        })
+
                     continue
 
                 text = raw
@@ -871,6 +1056,147 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
                 await send_task
         except WebSocketDisconnect:
             pass
+        finally:
+            dispatcher_task.cancel()
+            # Any tool thread still parked on a permission future must be
+            # released, or session.send() will hang the executor forever
+            # and the process cannot shut down cleanly.
+            for _rid, _fut in list(pending_permissions.items()):
+                if not _fut.done():
+                    _fut.set_result(False)
+            pending_permissions.clear()
+
+    # ---- Blender bridge (MCP) -------------------------------------------
+    # The status light in the title bar polls /status, so it stays cheap:
+    # a refused TCP connect when Blender is closed, one GET when it is open.
+    # Anything that scans the filesystem lives in /info instead.
+    def _blender_bridge():
+        from ..mcp import get_bridge
+        endpoint = store.get_setting("blender_endpoint", "") or None
+        return get_bridge(endpoint)
+
+    @app.get("/api/blender/status")
+    def blender_status(handshake: bool = True):
+        return _blender_bridge().status(handshake=handshake)
+
+    @app.get("/api/blender/info")
+    def blender_info():
+        from .. import blender_integration
+        return {"install": blender_integration.status(),
+                "bridge": _blender_bridge().status(handshake=False)}
+
+    @app.post("/api/blender/connect")
+    def blender_connect():
+        from ..mcp import MCPError
+        bridge = _blender_bridge()
+        try:
+            bridge.connect()
+        except MCPError as exc:
+            raise HTTPException(503, str(exc)) from exc
+        return bridge.status()
+
+    @app.put("/api/blender/endpoint")
+    def blender_set_endpoint(body: dict[str, str]):
+        endpoint = (body.get("endpoint") or "").strip()
+        if not endpoint.startswith(("http://", "https://")):
+            raise HTTPException(400, "endpoint must be an http(s) URL")
+        store.set_setting("blender_endpoint", endpoint)
+        bridge = _blender_bridge()
+        bridge.configure(endpoint=endpoint)
+        return bridge.status()
+
+    @app.post("/api/blender/install")
+    def blender_install():
+        """Copy the bundled add-on into Blender and enable it. Slow (it
+        runs Blender once), so it is a POST the user triggers, never part
+        of the poll."""
+        from .. import blender_integration
+        result = blender_integration.install_addon()
+        if not result.get("ok"):
+            raise HTTPException(400, result.get("error", "install failed"))
+        return result
+
+    @app.post("/api/blender/launch")
+    def blender_launch():
+        from .. import blender_integration
+        result = blender_integration.launch_blender()
+        if not result.get("ok"):
+            raise HTTPException(400, result.get("error", "could not start Blender"))
+        return result
+
+    @app.websocket("/ws/terminal")
+    async def ws_terminal(ws: WebSocket):
+        """The Terminal panel's shell session.
+
+        One session per connection, holding its own working directory (so
+        `cd` sticks) and at most one live process. Output is pumped through
+        a queue rather than sent from the worker thread, because the receive
+        loop has to stay responsive while a command runs — that is what
+        makes stdin and Ctrl-C work mid-command instead of only after it."""
+        from .terminal import TerminalSession, shell_name
+
+        def app_info() -> dict[str, Any]:
+            """The rows `--info` can only get from the running app."""
+            rows: dict[str, str] = {}
+            try:
+                counts = store.to_graph_payload().get("counts", {})
+                nodes, edges = counts.get("nodes", 0), counts.get("edges", 0)
+                rows["Brain"] = (
+                    f"{store.home}  ({nodes} node{'' if nodes == 1 else 's'}, "
+                    f"{edges} edge{'' if edges == 1 else 's'})"
+                )
+            except Exception:
+                rows["Brain"] = str(store.home)
+            rows["Project"] = str(app.state.project_dir)
+            try:
+                provider = store.get_active_provider()
+            except Exception:
+                provider = None
+            rows["Provider"] = (
+                f"{provider['name']} · {provider['model'] or 'no model set'}"
+                if provider
+                else "none configured — Settings → Preferences"
+            )
+            rows["Uptime"] = _format_uptime(time.time() - app.state.started_at)
+            return rows
+
+        await ws.accept()
+        loop = asyncio.get_running_loop()
+        session = TerminalSession(app.state.project_dir, info=app_info)
+        outbox: asyncio.Queue = asyncio.Queue()
+
+        def emit(payload: dict[str, Any]) -> None:
+            loop.call_soon_threadsafe(outbox.put_nowait, payload)
+
+        async def pump() -> None:
+            while True:
+                await ws.send_json(await outbox.get())
+
+        await ws.send_json({"type": "ready", "cwd": str(session.cwd), "shell": shell_name()})
+        pump_task = asyncio.create_task(pump())
+        try:
+            while True:
+                msg = await ws.receive_json()
+                kind = msg.get("type")
+                if kind == "run":
+                    if session.running:
+                        emit({"type": "err", "data": "a command is already running\n"})
+                        continue
+
+                    def work(cmd: str = str(msg.get("cmd", ""))) -> None:
+                        code = session.run(cmd, lambda text: emit({"type": "out", "data": text}))
+                        emit({"type": "exit", "code": code, "cwd": str(session.cwd)})
+
+                    loop.run_in_executor(None, work)
+                elif kind == "input":
+                    session.send_input(str(msg.get("data", "")))
+                elif kind == "signal":
+                    session.interrupt()
+        except (WebSocketDisconnect, json.JSONDecodeError, RuntimeError, KeyError, TypeError):
+            pass
+        finally:
+            session.close()
+            pump_task.cancel()
 
     @app.websocket("/ws/events")
     async def ws_events(ws: WebSocket):

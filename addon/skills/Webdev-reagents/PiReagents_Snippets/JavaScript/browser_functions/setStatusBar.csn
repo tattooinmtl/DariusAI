@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Set Status Bar" description = "Code to display the given string in the browser's status bar." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function setStatusBar(msgStr) { self.status = msgStr; }
+]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

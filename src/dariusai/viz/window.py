@@ -173,7 +173,7 @@ class DesktopAPI:
 def launch(
     home: Path | str,
     host: str = "127.0.0.1",
-    port: int = 8765,
+    port: int = 8780,   # 8765 belongs to the Blender MCP add-on
     blocking: bool = True,
     project_dir: Path | str | None = None,
 ) -> None:

@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Area of Rectangle" description = "Calculates the area of a rectangle given the width and height." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function areaOfRectangle(width, height) { return width * height; }
+]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

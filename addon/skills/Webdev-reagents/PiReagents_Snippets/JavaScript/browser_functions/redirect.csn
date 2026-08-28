@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Redirect" description = "Code to redirect the browser to a given URL." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function redirect(URLStr) { location = URLStr; }
+]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

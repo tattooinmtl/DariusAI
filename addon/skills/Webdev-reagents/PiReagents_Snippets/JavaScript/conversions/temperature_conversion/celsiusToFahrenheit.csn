@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Celsius to Fahrenheit" description = "Converts degrees Celsius to degrees Fahrenheit." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function celsiusToFahrenheit(t) { return (212-32)/100 * t + 32; }
+]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

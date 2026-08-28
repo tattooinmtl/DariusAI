@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Browser Detection: Version 4" description = "Code to distinguish between browser versions less than 4 and browser versions 4 or greater." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function browserVer4Detect()
+{
+  if(navigator.appVersion.substring(0,1) < 4)
+    URLStr = "1.html";
+  else
+    URLStr = "2.html";
+  window.location = URLStr;
+}
+]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

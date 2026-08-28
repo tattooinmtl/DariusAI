@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "MB to KB" description = "Converts megabytes to kilobytes." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function mbToKb(MB) { return MB * 1024; }
+]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

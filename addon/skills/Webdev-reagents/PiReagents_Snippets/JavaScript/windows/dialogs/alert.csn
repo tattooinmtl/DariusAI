@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name="alert" description="Displays an Alert dialog box with a given %22String%22 message and an OK button." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[alert(messageStr);
+]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

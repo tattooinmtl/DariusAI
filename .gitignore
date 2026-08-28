@@ -49,6 +49,14 @@ launch_error.log
 .dariusai-scratch/
 _dom_dump.html
 
+# --- Build artifacts / bloat ------------------------------------------------
+# 70+ MB packaged zips regenerated from the tree. Not committed — they
+# double the clone size for every user and every clone forever, and they
+# are trivially rebuilt from the source that is committed.
+DariusAI.zip
+Brain.zip
+/*.zip
+
 # --- Generated projects -----------------------------------------------------
 # The workbench lives at C:/DariusAIWorkbench, outside this tree. This is a
 # guard in case someone points workbench_root inside the repo.
@@ -76,6 +84,10 @@ node_modules/
 /dariusai-harnessOLD.md
 /BrainFIX.md
 /AuditFullMAX.md
+/AGENT_CAPABILITY_FIX.md
+/COMMAND_TEST.md
+/AGENT_WORKSPACE_CONVENTION.md
+/AGENTS.md
 !/README.md
 
 # --- Editors and OS ---------------------------------------------------------

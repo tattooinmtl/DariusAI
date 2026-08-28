@@ -1,0 +1,8 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Service Mark" description = "A superscripted Service Mark symbol ('SM')." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[<sup>sm</sup> ]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

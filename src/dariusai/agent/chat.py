@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -28,9 +29,24 @@ from .tools import ToolRegistry
 # like a crash. Overridable for anyone who wants a tighter leash.
 MAX_TOOL_ITERATIONS = int(os.environ.get("DARIUSAI_MAX_TOOL_ITERATIONS", "60"))
 
+# Tools whose results are reference material: read once, acted on, then
+# dead weight in every subsequent prompt of the turn. They are evicted on
+# a timer (see `skill_payload_ttl`) rather than waiting for compaction,
+# which only fires once the window is already 75% full.
+SKILL_TOOLS = {"invoke_skill", "load_skill", "skill_lookup"}
+SKILL_PAYLOAD_TTL = int(os.environ.get("DARIUSAI_SKILL_PAYLOAD_TTL", "2"))
+# Bodies at or under this stay put — evicting them saves nothing and
+# costs the model the content.
+SKILL_PAYLOAD_MIN_CHARS = 800
+# And an eviction pass only runs once the stale payloads add up to this
+# much, because rewriting history invalidates the prompt cache from that
+# point onwards. Roughly a thousand tokens: worth one cache re-write.
+SKILL_PAYLOAD_EVICT_MIN_CHARS = int(os.environ.get("DARIUSAI_SKILL_EVICT_MIN_CHARS", "4000"))
+
 CHAT_SYSTEM = with_doctrine(
     "You are DariusAI, a self-improving polyglot coding agent. Use the tools available to read/write "
     "files and run shell commands in any language's toolchain. "
+    "When returning code to the user, always output complete, fully formed files/pages in code blocks so they can be sent directly to the editor as working files. "
     "For questions about external APIs, web services, frameworks, or current links/examples, call web_research first "
     "before answering. Keep replies concise."
 )
@@ -65,6 +81,13 @@ class ChatSession:
     total_input_tokens: int = 0
     total_output_tokens: int = 0
     context_window: int = 0
+    # Prompt-cache accounting. `current_input_tokens` above is the *whole*
+    # prompt (cached + uncached); these say how much of it was served from
+    # the cache at ~0.1x. A hit rate stuck at zero is the tell for a silent
+    # cache invalidator, which is otherwise invisible until the bill.
+    current_cache_read_tokens: int = 0
+    current_cache_write_tokens: int = 0
+    total_cache_read_tokens: int = 0
     # Auto-compaction controls. The session calls `compact(force=False)`
     # at the top of each LLM iteration; the call is a no-op unless the
     # prompt is already past `compact_threshold_ratio * context_window`,
@@ -80,6 +103,28 @@ class ChatSession:
     # during compaction. Anything longer is replaced with a short stub
     # that preserves the "this output existed" signal but not the bytes.
     tool_output_truncate_chars: int = 500
+    # Skill payload eviction. A skill body read at iteration 3 of a
+    # 60-iteration turn is otherwise re-sent to the provider 57 more
+    # times, long after the model has acted on it. `skill_payload_ttl`
+    # is how many further iterations a body stays verbatim before it
+    # is replaced with a one-line receipt naming the skill and how to
+    # get it back. The model keeps the *fact* that it read the skill —
+    # what it loses is the bytes it already used.
+    skill_payload_ttl: int = SKILL_PAYLOAD_TTL
+    # Minimum total stale payload before an eviction pass runs at all —
+    # see `_evict_skill_payloads` for why this interacts with the cache.
+    skill_payload_evict_min_chars: int = SKILL_PAYLOAD_EVICT_MIN_CHARS
+    # Session state that survives compaction: what the turn touched,
+    # not what was said about it. Persisted through `state_sink` at the
+    # end of every turn (the websocket wires it to the brain's settings
+    # table) so a reconnecting client can rehydrate without replaying
+    # the conversation.
+    session_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    state: dict[str, Any] = field(default_factory=dict)
+    state_sink: Callable[[str, dict[str, Any]], None] | None = None
+    # tool_use_id -> {name, iteration, chars} for skill bodies currently
+    # sitting verbatim in `messages`.
+    _skill_payloads: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)
 
     def send(self, user_text: str, on_event: EventCallback | None = None) -> str:
         """Append a user message, run the tool-calling loop until the model
@@ -98,6 +143,14 @@ class ChatSession:
         # passes its own on_event).
         self.tools.on_event = on_event if on_event else None
 
+        # Fresh turn = fresh permission slate. External-read grants
+        # approved during the previous turn are dropped so the "one
+        # grant per prompt" contract holds — if the agent needs the
+        # same folder again it has to ask the human again.
+        sandbox = getattr(self.tools, "sandbox", None)
+        if sandbox is not None and hasattr(sandbox, "clear_external_grants"):
+            sandbox.clear_external_grants()
+
         self.messages.append({"role": "user", "content": user_text})
         tool_schemas = self.tools.to_anthropic_tools()
         final_text = ""
@@ -110,6 +163,15 @@ class ChatSession:
         bus.publish({"kind": "agent_turn", "phase": "start", "route": COORDINATOR_ID})
         try:
             for i in range(MAX_TOOL_ITERATIONS):
+                # Drop skill bodies the model has already reasoned over.
+                # Runs before the compaction check because it is the
+                # cheaper lever: no LLM call, no history rewrite, and it
+                # keeps the prompt under the compaction threshold for
+                # longer.
+                evicted = self._evict_skill_payloads(i)
+                if evicted:
+                    emit({"type": "skill_payloads_evicted", **evicted})
+
                 # Auto-compact before the next LLM call when the prior
                 # call's prompt is already past the threshold. A no-op
                 # on the first iteration (no prior usage yet) and any
@@ -133,8 +195,20 @@ class ChatSession:
                 # and `context_window` in production; the test stub
                 # omits them, so we tolerate their absence.
                 usage = resp.get("usage") or {}
-                in_tok = int(usage.get("input_tokens") or 0)
+                # With prompt caching on, `input_tokens` is only the
+                # *uncached* remainder — the cached prefix is reported
+                # separately. The gauge and the auto-compaction threshold
+                # both want the real prompt size, so the three add up;
+                # reading input_tokens alone would show a 60-iteration
+                # turn as using almost no context and compaction would
+                # never fire.
+                cache_read = int(usage.get("cache_read_input_tokens") or 0)
+                cache_write = int(usage.get("cache_creation_input_tokens") or 0)
+                in_tok = int(usage.get("input_tokens") or 0) + cache_read + cache_write
                 out_tok = int(usage.get("output_tokens") or 0)
+                self.current_cache_read_tokens = cache_read
+                self.current_cache_write_tokens = cache_write
+                self.total_cache_read_tokens += cache_read
                 # Replace the cumulative semantics with "current call":
                 # the value the chat panel renders is the size of *this*
                 # prompt, not the sum across the whole session. The
@@ -175,6 +249,10 @@ class ChatSession:
                     emit({"type": "tool_call_result", "name": call["name"], "result": output})
                     tool_results.append({"name": call["name"], "result": output})
                     results.append({"type": "tool_result", "tool_use_id": call["id"], "content": output})
+                    # Observe: record what the call did in session state,
+                    # and mark reference payloads for eviction later in
+                    # the turn.
+                    self._observe(i, call, output)
                 self.messages.append({"role": "user", "content": results})
 
                 if i == MAX_TOOL_ITERATIONS - 1:
@@ -199,6 +277,12 @@ class ChatSession:
         finally:
             bus.publish({"kind": "agent_turn", "phase": "end", "route": COORDINATOR_ID})
 
+        # Persist state before responding: the compact record of what the
+        # turn touched outlives both the eviction above and any later
+        # compaction, so a reconnect (or the next turn) starts from facts
+        # rather than from a re-read of everything.
+        self.persist_state(user_text=user_text, assistant_text=final_text)
+
         if self.on_turn_complete:
             try:
                 self.on_turn_complete({
@@ -211,6 +295,122 @@ class ChatSession:
                 pass
 
         return final_text
+
+    # ------------------------------------------------------------------
+    # Observe / evict / persist — the cheap half of the loop
+    # ------------------------------------------------------------------
+
+    def _observe(self, iteration: int, call: dict[str, Any], output: str) -> None:
+        """Fold one tool result into session state, and register skill
+        bodies for later eviction.
+
+        State is deliberately tiny — names and paths, never bodies. It is
+        the thing that has to survive when the bodies don't.
+        """
+        name = call.get("name", "")
+        args = call.get("input") or {}
+
+        if name in SKILL_TOOLS and len(output) >= SKILL_PAYLOAD_MIN_CHARS:
+            label = str(args.get("name") or args.get("skill_id") or args.get("query") or name)
+            self._skill_payloads[call["id"]] = {
+                "name": name, "label": label, "iteration": iteration, "chars": len(output),
+            }
+            used = self.state.setdefault("skills_used", [])
+            if label not in used:
+                used.append(label)
+        elif name in ("write_file", "read_file") and args.get("path"):
+            key = "files_written" if name == "write_file" else "files_read"
+            paths = self.state.setdefault(key, [])
+            if args["path"] not in paths:
+                paths.append(args["path"])
+        elif name == "set_todos":
+            self.state["todos"] = args.get("items") or []
+
+    def _evict_skill_payloads(self, iteration: int) -> dict[str, Any]:
+        """Replace skill bodies older than `skill_payload_ttl` iterations
+        with a one-line receipt.
+
+        The receipt names the skill and says how to get it back, so the
+        model can re-fetch the one section it still needs instead of
+        carrying the whole document for the rest of the turn. Returns a
+        summary dict (empty when nothing was evicted) for the UI.
+        """
+        if self.skill_payload_ttl < 0 or not self._skill_payloads:
+            return {}
+        stale = {
+            tid: meta for tid, meta in self._skill_payloads.items()
+            if iteration - meta["iteration"] > self.skill_payload_ttl
+        }
+        if not stale:
+            return {}
+        # Rewriting history invalidates the prompt cache from that point,
+        # so eviction has to be worth the re-write it forces: hold the
+        # stale payloads until they add up to something, then drop them
+        # in one batch. Trickling out 900 chars at a time would cost more
+        # in cache misses than it saves in re-sent bytes.
+        if sum(m["chars"] for m in stale.values()) < self.skill_payload_evict_min_chars:
+            return {}
+
+        saved = 0
+        for message in self.messages:
+            content = message.get("content")
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if not isinstance(block, dict) or block.get("type") != "tool_result":
+                    continue
+                meta = stale.get(block.get("tool_use_id"))
+                if not meta or not isinstance(block.get("content"), str):
+                    continue
+                saved += len(block["content"])
+                block["content"] = (
+                    f"[{meta['name']}({meta['label']}) — {meta['chars']:,} chars already read and acted on; "
+                    f"body dropped to save context. Call skill_lookup(query=...) or "
+                    f"invoke_skill(name='{meta['label']}', query=...) if you need a specific part again.]"
+                )
+        for tid in stale:
+            self._skill_payloads.pop(tid, None)
+        return {"count": len(stale), "saved_chars": saved,
+                "skills": [m["label"] for m in stale.values()]}
+
+    def state_snapshot(self) -> dict[str, Any]:
+        """The durable, compact view of the session — what was touched,
+        not what was said."""
+        return {
+            "session_id": self.session_id,
+            "updated_at": time.time(),
+            "skills_used": self.state.get("skills_used", []),
+            "files_written": self.state.get("files_written", []),
+            "files_read": self.state.get("files_read", []),
+            "todos": self.state.get("todos", []),
+            "last_user_text": self.state.get("last_user_text", ""),
+            "last_assistant_text": self.state.get("last_assistant_text", ""),
+            "tokens": {
+                "current_input": self.current_input_tokens,
+                "total_input": self.total_input_tokens,
+                "total_output": self.total_output_tokens,
+                "context_window": self.context_window,
+            },
+        }
+
+    def persist_state(self, user_text: str = "", assistant_text: str = "") -> dict[str, Any]:
+        """Hand the snapshot to whatever the host wired up as the sink.
+
+        No sink is a perfectly good configuration (the CLI has none), and a
+        sink that raises must not take the turn down with it — state is a
+        convenience, the reply is the product.
+        """
+        if user_text:
+            self.state["last_user_text"] = user_text[:500]
+        if assistant_text:
+            self.state["last_assistant_text"] = assistant_text[:500]
+        snapshot = self.state_snapshot()
+        if self.state_sink is not None:
+            try:
+                self.state_sink(self.session_id, snapshot)
+            except Exception:
+                pass
+        return snapshot
 
     def _emit_token_stats(self, emit, in_tok: int, out_tok: int, elapsed_ms: float) -> None:
         """Publish a `token_stats` event the chat panel renders as
@@ -240,6 +440,10 @@ class ChatSession:
             "context_window": self.context_window,
             "tps": tps,
             "elapsed_ms": elapsed_ms,
+            "cache_read_tokens": self.current_cache_read_tokens,
+            "cache_write_tokens": self.current_cache_write_tokens,
+            # Share of this prompt that was served from cache at ~0.1x.
+            "cache_hit_ratio": (self.current_cache_read_tokens / in_tok) if in_tok else 0.0,
         })
 
     # ------------------------------------------------------------------

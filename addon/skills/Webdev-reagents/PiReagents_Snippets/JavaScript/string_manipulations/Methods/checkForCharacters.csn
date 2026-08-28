@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Check for Characters" description = "Searches in a given string for the first occurrence of another string." preview="code" type="wrap">
+<insertText location="beforeSelection">
+<![CDATA[function checkForCharacters(inputString, checkString, startingIndex)
+{
+  if (!startingIndex) startingIndex = 0;
+  return inputString.indexOf(checkString);
+}
+]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

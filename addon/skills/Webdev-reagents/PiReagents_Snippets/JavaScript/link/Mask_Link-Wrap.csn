@@ -1,0 +1,8 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Mask Link, Wrap" description = "Code to turn the current selection into a link for which the URL does not appear in the Status Bar." preview="code" type="wrap">
+<insertText location="beforeSelection">
+<![CDATA[<a href="#" onMouseOver="window.status='';return true">]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[</a>]]>
+</insertText>
+</snippet>

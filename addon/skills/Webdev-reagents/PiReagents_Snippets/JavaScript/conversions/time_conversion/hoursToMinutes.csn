@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Hours to Minutes" description = "Converts hours to minutes." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function hoursToMinutes(hrs) { return hrs*=60; }
+]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

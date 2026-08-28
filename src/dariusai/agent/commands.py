@@ -1626,6 +1626,74 @@ def _cmd_account(ctx: CommandContext, args: list) -> CommandResult:
 
 
 # ---------------------------------------------------------------------------
+# /3dgame — load the skill and attach to Blender
+# ---------------------------------------------------------------------------
+
+
+def _cmd_3dgame(ctx: CommandContext, args: list) -> CommandResult:
+    """Bring up the 3D game-asset workflow: connect to Blender over MCP,
+    run the kit's health check, and load the `3dgame` skill.
+
+    Reports the same three states as the title-bar light, because a
+    command that says "ready" while the light is red would be the more
+    confusing of the two."""
+    from ..mcp import MCPError, get_bridge  # noqa: PLC0415 - keeps import cost off startup
+
+    endpoint = None
+    if ctx.store is not None:
+        try:
+            endpoint = ctx.store.get_setting("blender_endpoint", "") or None
+        except Exception:
+            endpoint = None
+
+    bridge = get_bridge(endpoint)
+    status = bridge.status()
+    state = status["state"]
+
+    if state != "green":
+        hint = ("Start Blender (the add-on serves on 127.0.0.1:8765). If it is not "
+                "installed yet: Settings → Blender → Install add-on."
+                if state == "red" else
+                "Something is answering on that port but it is not the DariusAI "
+                "bridge — check the port, or wait for Blender to finish starting.")
+        return _err(
+            f"Blender is not connected ({state}): {status['detail']}\n{hint}",
+            ui={"kind": "blender", "status": status},
+        )
+
+    try:
+        health = bridge.call("game3d_health_check")
+    except MCPError as exc:
+        return _err(f"Connected, but the 3dgame kit did not answer: {exc}",
+                    ui={"kind": "blender", "status": status})
+
+    skill_text = ""
+    if ctx.store is not None:
+        try:
+            from .tools import _invoke_skill  # noqa: PLC0415
+            skill_text = _invoke_skill(ctx.store, "3dgame")
+        except Exception as exc:
+            skill_text = f"(the 3dgame skill could not be loaded: {exc})"
+
+    server = status.get("server", {}) or {}
+    lines = [
+        f"**3dgame ready** — {server.get('name', 'blender')} "
+        f"{server.get('version', '')} on Blender {health.get('blender', '?')}",
+        f"- endpoint: {status['endpoint']}",
+        f"- engine: {health.get('engine')} · {health.get('objects', 0)} objects in the scene",
+        f"- structures: {', '.join(health.get('structures', []))}",
+        f"- units: {', '.join(health.get('units', []))}",
+        f"- palettes: {', '.join(health.get('palettes', []))}",
+        "",
+        "What would you like to build?",
+    ]
+    if skill_text:
+        lines += ["", "---", skill_text]
+
+    return _ok("\n".join(lines), ui={"kind": "blender", "status": status})
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
@@ -1968,6 +2036,11 @@ def _build_registry() -> dict:
                handler=_cmd_metrics))
     _add(_make("mem-status", "status", "memory", "Show memory status.",
                handler=_cmd_memory_status))
+
+    # 3D / Blender
+    _add(_make("3dgame", "creation", "3dgame",
+               "Connect to Blender and load the 3D game-asset kit.",
+               handler=_cmd_3dgame, aliases=("blender", "3d")))
 
     # Voice
     _add(_make("voice", "voice", "voice", "Toggle voice mode.",

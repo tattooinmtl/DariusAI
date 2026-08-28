@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Remove Repeated Characters" description = "When a character (such as a space) appears multiple consecutive times in the given string, removes the repeated occurrences." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function removeExtraSpaces(string, delimiter)
+{
+  var returnString = "";
+  splitstring = string.split(delimiter);
+  for(i = 0; i < splitstring.length; i++)
+    {
+    if (splitstring[i]!="") returnString += splitstring[i] + delimiter;
+    }
+  return returnString;
+}]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

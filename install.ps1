@@ -33,7 +33,7 @@
 [CmdletBinding()]
 param(
     [string] $Dest,
-    [string] $Repo = 'https://github.com/tattooinmtl/dariusai-harness.git',
+    [string] $Repo = 'https://github.com/tattooinmtl/DariusAI.git',
     [string] $Branch = 'main',
     [switch] $SkipShortcuts
 )
@@ -90,15 +90,14 @@ if (-not $Dest) {
 $Dest = [System.IO.Path]::GetFullPath($Dest)
 
 # --- Clone or update ---------------------------------------------------------
-# The repository is private, so the clone needs credentials. `gh auth setup-git`
-# hands git the CLI's existing login; without gh, git falls back to Windows
-# Credential Manager, which prompts. Either way the failure below is explained
-# rather than surfacing a bare git error.
+# Public repo — no auth needed for the clone. The failure branches below
+# still exist for the "no network" and "git bin missing" cases, which are
+# the real ways this step fails now.
 
 if (Test-Path (Join-Path $Dest '.git')) {
     Write-Step "Updating existing checkout at $Dest"
     & git -C $Dest fetch --quiet origin $Branch
-    if ($LASTEXITCODE -ne 0) { Fail "Could not fetch from origin. Check your network and GitHub access." }
+    if ($LASTEXITCODE -ne 0) { Fail "Could not fetch from origin. Check your network connection." }
 
     # Never clobber uncommitted work: refuse to move a dirty tree.
     $dirty = & git -C $Dest status --porcelain
@@ -113,16 +112,9 @@ if (Test-Path (Join-Path $Dest '.git')) {
     }
 } else {
     Write-Step "Cloning $Repo"
-    if (Get-Command gh -ErrorAction SilentlyContinue) {
-        & gh auth setup-git 2>$null   # no-op when gh is not logged in
-    }
     & git clone --branch $Branch $Repo $Dest
     if ($LASTEXITCODE -ne 0) {
-        Fail @"
-Clone failed. This repository is private, so git needs credentials.
-  - With the GitHub CLI:  gh auth login   (then re-run this script)
-  - Otherwise, ensure Windows Credential Manager has a GitHub entry.
-"@
+        Fail "Clone failed. Check your network connection and that $Repo is reachable."
     }
     Write-Ok "cloned into $Dest"
 }

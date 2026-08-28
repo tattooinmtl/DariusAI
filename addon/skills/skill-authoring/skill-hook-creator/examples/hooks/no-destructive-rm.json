@@ -1,0 +1,8 @@
+{
+  "name": "no-destructive-rm",
+  "trigger": "PreToolUse",
+  "matcher": "run_shell",
+  "command": "node examples/hooks/no-destructive-rm.js",
+  "timeout": 5,
+  "description": "Blocks any run_shell command that contains `rm -rf /`, `sudo rm`, `| sh`, or other global-guardrail patterns. Install with: node tools/install-hook.js examples/hooks/no-destructive-rm.json --harness omni"
+}

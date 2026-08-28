@@ -1,0 +1,52 @@
+{
+  "todos": [
+    {
+      "id": "T001",
+      "title": "Create C:/.skills root + folder layout",
+      "status": "pending",
+      "notes": "skills/, hooks/, examples/, plans/, agents/",
+      "createdAt": "2026-08-17T21:46:35.240Z",
+      "updatedAt": "2026-08-17T21:46:35.240Z"
+    },
+    {
+      "id": "T002",
+      "title": "Author per-agent entry files (CLAUDE.md, AGENTS.md, GEMINI.md, KIMI.md, PI.md, OMNI.md)",
+      "status": "pending",
+      "notes": "",
+      "createdAt": "2026-08-17T21:46:35.252Z",
+      "updatedAt": "2026-08-17T21:46:35.252Z"
+    },
+    {
+      "id": "T003",
+      "title": "Build plan-and-dispatch protocol (prompt → plan → phases.md)",
+      "status": "pending",
+      "notes": "",
+      "createdAt": "2026-08-17T21:46:35.264Z",
+      "updatedAt": "2026-08-17T21:46:35.264Z"
+    },
+    {
+      "id": "T004",
+      "title": "Build phase rotation tool: unload/load skills + new conversation trigger",
+      "status": "pending",
+      "notes": "",
+      "createdAt": "2026-08-17T21:46:35.273Z",
+      "updatedAt": "2026-08-17T21:46:35.273Z"
+    },
+    {
+      "id": "T005",
+      "title": "Populate examples/hooks with reference hooks + sample phases.md",
+      "status": "pending",
+      "notes": "",
+      "createdAt": "2026-08-17T21:46:35.284Z",
+      "updatedAt": "2026-08-17T21:46:35.284Z"
+    },
+    {
+      "id": "T006",
+      "title": "Smoke-test the dispatch workflow end-to-end",
+      "status": "pending",
+      "notes": "",
+      "createdAt": "2026-08-17T21:46:35.296Z",
+      "updatedAt": "2026-08-17T21:46:35.296Z"
+    }
+  ]
+}

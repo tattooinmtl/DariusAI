@@ -1,0 +1,8 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Do Not Cache" description = "A meta tag to prevent the document from being saved in the browser's local cache." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[<meta http-equiv="pragma" content="no-cache">]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

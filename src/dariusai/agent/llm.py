@@ -27,6 +27,64 @@ MAX_TOKENS = int(os.environ.get("DARIUSAI_MAX_TOKENS", "4096"))
 # of the window that's left. Override at the LLM instance if needed.
 DEFAULT_CONTEXT_WINDOW = 200_000
 
+# Prompt caching. The doctrine + role prompt (~2,000 tokens) and the tool
+# schemas (~1,800 tokens) are byte-identical on every call, and a single
+# chat turn makes up to MAX_TOOL_ITERATIONS calls — so ~3,800 tokens of
+# unchanged prefix was being re-sent up to 60 times per turn at full
+# price. Anthropic caches on a prefix match (render order: tools ->
+# system -> messages), so one breakpoint on `system` covers the tools too,
+# and a rolling breakpoint on the last message covers the conversation
+# built up so far. Cache reads bill at ~0.1x, writes at ~1.25x.
+#
+# Set DARIUSAI_PROMPT_CACHE=0 to send plain requests (an API-compatible
+# gateway that chokes on cache_control is the reason this switch exists).
+PROMPT_CACHE_ENABLED = os.environ.get("DARIUSAI_PROMPT_CACHE", "1") != "0"
+_EPHEMERAL = {"type": "ephemeral"}
+
+
+def cacheable_system(system: str) -> list[dict[str, Any]] | str:
+    """The system prompt as a single cached text block.
+
+    One breakpoint here caches everything the API renders before the
+    messages — the tool schemas included — which is the whole static half
+    of every request this harness makes.
+    """
+    if not PROMPT_CACHE_ENABLED or not system:
+        return system
+    return [{"type": "text", "text": system, "cache_control": dict(_EPHEMERAL)}]
+
+
+def with_cached_history(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Copy `messages` with a cache breakpoint on the last block.
+
+    A tool-calling turn only ever *appends*, so each request's prefix is
+    the previous request's cached entry: iteration N writes the cache,
+    iteration N+1 reads it and writes only its own delta. Incremental,
+    and it costs one extra breakpoint (the API allows four).
+
+    Copies rather than mutates: the ChatSession owns `messages` and
+    re-sends the same list next iteration, and a `cache_control` key
+    accumulating on old blocks would burn breakpoints and, worse, change
+    bytes the cache is keyed on.
+    """
+    if not PROMPT_CACHE_ENABLED or not messages:
+        return messages
+    out = list(messages)
+    last = dict(out[-1])
+    content = last.get("content")
+    if isinstance(content, str):
+        if not content:
+            return messages
+        last["content"] = [{"type": "text", "text": content, "cache_control": dict(_EPHEMERAL)}]
+    elif isinstance(content, list) and content and isinstance(content[-1], dict):
+        blocks = list(content)
+        blocks[-1] = {**blocks[-1], "cache_control": dict(_EPHEMERAL)}
+        last["content"] = blocks
+    else:
+        return messages
+    out[-1] = last
+    return out
+
 
 class LLM(Protocol):
     def complete(
@@ -126,8 +184,8 @@ class AnthropicLLM:
         resp = self.client.messages.create(
             model=self.model,
             max_tokens=MAX_TOKENS,
-            system=system,
-            messages=messages,
+            system=cacheable_system(system),
+            messages=with_cached_history(messages),
             tools=tools or [],
         )
         content = []
@@ -141,9 +199,17 @@ class AnthropicLLM:
         # them across a multi-turn call loop.
         usage = {}
         if getattr(resp, "usage", None) is not None:
+            # `input_tokens` counts only the *uncached* part of the prompt.
+            # The cache figures are surfaced alongside it so the chat panel
+            # can show the hit rate — and so a silent invalidator (a
+            # timestamp in the system prompt, a tool list that reorders)
+            # shows up as cache_read staying at zero instead of as a
+            # quietly larger bill.
             usage = {
                 "input_tokens": getattr(resp.usage, "input_tokens", 0) or 0,
                 "output_tokens": getattr(resp.usage, "output_tokens", 0) or 0,
+                "cache_read_input_tokens": getattr(resp.usage, "cache_read_input_tokens", 0) or 0,
+                "cache_creation_input_tokens": getattr(resp.usage, "cache_creation_input_tokens", 0) or 0,
             }
         return {
             "content": content,

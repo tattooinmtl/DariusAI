@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Replace Characters" description = "Replaces all occurrences of a given character in a given string with another character." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function replaceCharacters(conversionString,inChar,outChar)
+{
+  var convertedString = conversionString.split(inChar);
+  convertedString = convertedString.join(outChar);
+  return convertedString;
+}]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

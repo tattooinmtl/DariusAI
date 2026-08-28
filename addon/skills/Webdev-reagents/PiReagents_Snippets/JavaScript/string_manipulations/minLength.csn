@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Min Length" description = "Determines whether a given string is more than a given number of characters long." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function minLength(inputString,inputLength)
+{
+  return (inputString.length >= inputLength) ? true : false;
+}  ]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

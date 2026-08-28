@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Text Field, Autoclear" description = "A form text field displaying a default message; when the visitor clicks in the field, the default message disappears." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[<input type="text" name="n" value="Your message" onFocus="if(this.value=='Your message')this.value='';">
+ ]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

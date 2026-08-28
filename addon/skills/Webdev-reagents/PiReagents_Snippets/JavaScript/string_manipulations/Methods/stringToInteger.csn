@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "String to Integer" description = "Converts a string into an integer." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function stringToInteger (inputString)
+{
+  return parseInt(inputString);
+}]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

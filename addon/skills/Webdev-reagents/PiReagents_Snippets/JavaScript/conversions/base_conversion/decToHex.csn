@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Decimal To Hex" description = "Converts a decimal number (0-255) to hexadecimal." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function decToHex(dec)
+{
+  var hexStr = "0123456789ABCDEF";
+  var low = dec % 16;
+  var high = (dec - low)/16;
+  hex = "" + hexStr.charAt(high) + hexStr.charAt(low);
+  return hex;
+}
+]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

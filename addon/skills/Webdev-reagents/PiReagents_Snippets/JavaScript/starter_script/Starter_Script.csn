@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Starter Script" description = "Header and footer for a Javascript script." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[<script language="JavaScript">
+<!--
+//-->
+</script> ]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

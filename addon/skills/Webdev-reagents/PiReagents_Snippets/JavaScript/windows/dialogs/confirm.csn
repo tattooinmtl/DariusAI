@@ -1,0 +1,8 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Confirm" description = "Displays a confirmation dialog box with a given message and OK and Cancel buttons. Returns true if the visitor chooses OK and false if the visitor chooses Cancel." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[confirm(messageStr);]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

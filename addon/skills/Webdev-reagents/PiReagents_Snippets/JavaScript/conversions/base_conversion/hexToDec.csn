@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Hex To Decimal" description = "Converts a hexadecimal number to decimal." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function hexToDec(hex) { return parseInt(hex,16); }
+]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

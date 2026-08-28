@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Random Number" description = "Returns a random number between 0 and limit." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function randomNumber(limit){
+  return Math.floor(Math.random()*limit);
+}
+]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

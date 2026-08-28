@@ -1,0 +1,53 @@
+{
+  "meta": {
+    "library": "PiReAgents Snippet Library",
+    "version": 1,
+    "source": "md+txt export",
+    "base_folder": "C:/Test/PiReagents_Snippets"
+  },
+  "snippets": [
+    {
+      "category": "Accessible > Content_Tables",
+      "name": "Text: Basic",
+      "description": "A basic block of text.",
+      "type": "block",
+      "file": "Accessible/Content_Tables/simple.csn"
+    },
+    {
+      "category": "Accessible > Content_Tables > icon",
+      "name": "Form: 2 Fields",
+      "description": "A form containing two fields and a button.",
+      "type": "block",
+      "file": "Accessible/Content_Tables/icon/Form1.csn"
+    },
+    {
+      "category": "Accessible > Content_Tables > icon",
+      "name": "Form: 1 Field",
+      "description": "A form containing one field and a button.",
+      "type": "block",
+      "file": "Accessible/Content_Tables/icon/Form2.csn"
+    },
+    {
+      "category": "Accessible > Content_Tables > icon",
+      "name": "List: Links",
+      "description": "A two-column list of links.",
+      "type": "block",
+      "file": "Accessible/Content_Tables/icon/List1.csn"
+    },
+    {
+      "category": "Accessible > Content_Tables > icon",
+      "name": "List: Prices",
+      "description": "A two-column list, second column right-aligned.",
+      "type": "block",
+      "file": "Accessible/Content_Tables/icon/List2.csn"
+    },
+    {
+      "category": "Accessible > Content_Tables > icon",
+      "name": "List: Bulleted B",
+      "description": "A three-column bulleted list.",
+      "type": "wrap",
+      "file": "Accessible/Content_Tables/icon/List3.csn"
+    }
+    // ... continue for all 226 entries
+  ]
+}

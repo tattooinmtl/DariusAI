@@ -1,0 +1,12 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Only Numbers" description = "Verifies that a given string consists entirely of numerals." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function onlyNumbers(inputString)
+{
+  var searchForNumbers = /\D+\_+\W+\s+\S+/
+  (searchForNumbers.test(inputString)) ? return false : return true;
+} ]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

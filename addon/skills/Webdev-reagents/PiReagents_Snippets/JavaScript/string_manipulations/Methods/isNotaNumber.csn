@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Is Not a Number" description = "Determines whether a given string is or is not a number." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function isNotaNumber (inputString)
+{
+  return isNaN(inputString);
+}]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

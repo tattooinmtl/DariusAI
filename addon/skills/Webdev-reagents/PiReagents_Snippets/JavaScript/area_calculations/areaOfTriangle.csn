@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Area of Triangle" description = "Calculates the area of a triangle given the width and height." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function areaOfTriangle(baseWidth, height) { return baseWidth * height / 2; }
+]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

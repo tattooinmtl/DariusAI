@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Number to String" description = "Converts a given base-10 number to the specified base, then converts the result into a string." preview="code" type="wrap">
+<insertText location="beforeSelection">
+<![CDATA[function numberToString(inputNumber,base)
+{
+  var prefix = '';
+  if (!base) base = 10;
+  if (base=8) prefix = '0';
+	if (base=16) prefix = '0x'
+  return (prefix + inputNumber.toString(base));
+}]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

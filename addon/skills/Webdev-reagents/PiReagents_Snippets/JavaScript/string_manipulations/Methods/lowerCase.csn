@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Lowercase" description = "Changes every letter in a given string to lowercase." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function stringToLowercase(inputString)
+{
+  return inputString.toLowerCase();
+}]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name="Comment, CSS/JS-Style, Multi-Line" description="Turns the selection into a CSS/JS-style comment, with a line break before and after the selection." preview="code" type="wrap">
+<insertText location="beforeSelection">
+<![CDATA[/*
+]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[
+*/]]>
+</insertText>
+</snippet>

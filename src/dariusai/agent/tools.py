@@ -7,11 +7,13 @@ viz window is looking at.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
 from ..brain.learn import InsufficientResearchError, research, save_learned_skill
+from ..brain.retrieval import DEFAULT_BUDGET_CHARS, DEFAULT_TOP_K, PassageIndex
 from ..brain.skill import Skill, Source
 from ..brain.store import COORDINATOR_ID, BrainStore
 from ..events.bus import bus
@@ -19,6 +21,13 @@ from .sandbox import Sandbox
 
 MAX_READ_BYTES = 200_000
 MAX_SHELL_OUTPUT = 20_000
+
+# A skill under this size is cheaper to hand over whole than to distil:
+# the RAG detour costs a round trip, and at ~1,500 tokens the body is not
+# what is filling the context window. Everything above it gets the
+# passage treatment — which is most of the library, whose median file is
+# ~7 KB and whose largest is over 100 KB.
+SKILL_FULL_LOAD_BYTES = int(os.environ.get("DARIUSAI_SKILL_FULL_LOAD_BYTES", "6000"))
 
 
 @dataclass
@@ -39,6 +48,11 @@ class ToolRegistry:
     # tool-side branch checks before firing so calling set_todos in a
     # unit test (no publisher) is a no-op rather than a crash.
     on_event: Callable[[dict[str, Any]], None] | None = None
+    # The sandbox the tools were built against. Exposed so the chat
+    # session can clear external-read grants at the top of each user
+    # turn — the "one grant per prompt" contract lives at the session
+    # boundary, not inside the sandbox's own state management.
+    sandbox: "Sandbox | None" = None
 
     def publish(self, event: dict[str, Any]) -> None:
         if self.on_event is not None:
@@ -125,10 +139,24 @@ def _read_file(sandbox: Sandbox, path: str) -> str:
 
 
 def _write_file(sandbox: Sandbox, path: str, content: str) -> str:
-    p = sandbox.resolve(path)
+    # for_write=True refuses external grants — writes are never allowed
+    # into a granted external tree, only the primary sandbox root.
+    p = sandbox.resolve(path, for_write=True)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content, encoding="utf-8")
     return f"wrote {len(content)} chars to {path}"
+
+
+def _request_external_read(sandbox: Sandbox, path: str, reason: str) -> str:
+    """One-turn permission to read a directory outside the sandbox.
+
+    The human is prompted with the path and the reason; on approval the
+    directory + all descendants become readable for the rest of the turn
+    only. Writes into the granted tree stay refused, and destructive
+    commands (rm/del/mv/git-reset/…) are blocked even for reads.
+    """
+    _, message = sandbox.request_and_grant(path, reason)
+    return message
 
 
 def _list_dir(sandbox: Sandbox, path: str = ".") -> str:
@@ -268,20 +296,101 @@ def _set_todos(reg: ToolRegistry, items: list[dict[str, str]]) -> str:
     return f"set {len(items)} todo(s)"
 
 
-def _invoke_skill(store: BrainStore, name: str) -> str:
-    """The harness's equivalent of the runtime's `Skill` tool: given a
-    skill name (e.g. 'brainstorming', 'systematic-debugging'), return
-    the full SKILL.md body so the model can follow its checklist.
+# ---- skill distillation (RAG over SKILL.md, instead of loading it whole) ---
 
-    Resolves the SKILL.md from `addon/skills/<group>/<name>/SKILL.md`
-    under the current project root — the source-of-truth content.
-    Bypassing the brain for the body is intentional: the model wants
-    the raw SKILL.md, not the parsed-fields view that `load_skill`
-    returns. The brain still indexes the skill for search and the viz.
 
-    Strips any `group:` prefix (e.g. 'superpowers:brainstorming').
-    If the name is ambiguous across groups, lists the matches so the
-    model can disambiguate.
+def _skill_files(store: BrainStore) -> list[Path]:
+    """Every SKILL.md the harness can invoke, from both libraries."""
+    project_root = store.get_setting("project_dir", "")
+    if not project_root:
+        return []
+    root = Path(project_root)
+    return sorted(root.glob("addon/skills/*/*/SKILL.md")) + \
+        sorted(root.glob("external_skills/*/*/SKILL.md"))
+
+
+def _passage_index(store: BrainStore) -> PassageIndex:
+    """One index per store, built lazily and cached on it — the chat
+    session, the CLI and the websocket all share the store, so they share
+    the index and its sync clock."""
+    index = getattr(store, "_passage_index", None)
+    if index is None:
+        index = PassageIndex(store.conn)
+        store._passage_index = index
+    return index
+
+
+def _sync_skill_index(store: BrainStore, force: bool = False) -> PassageIndex:
+    """Bring the passage index up to date with the skill files on disk.
+
+    Content-fingerprinted, so an unchanged library costs one read per file
+    and no writes; rate-limited by `stale()` so a long tool-calling turn
+    doesn't re-walk the tree on every iteration.
+    """
+    index = _passage_index(store)
+    if index.enabled and (force or index.stale()):
+        index.sync_paths(_skill_files(store))
+    return index
+
+
+def _touch_skill_node(store: BrainStore, name: str) -> None:
+    """Best-effort usage bump + viz pulse for a skill read by name. The
+    brain may not have imported the skill yet — that's fine, the file is
+    the answer either way."""
+    try:
+        for h in store.search(name, limit=5):
+            if h["label"] == name:
+                store.touch_usage(h["id"])
+                bus.publish({
+                    "kind": "skill_used", "id": h["id"], "label": h["label"],
+                    "route": COORDINATOR_ID,
+                })
+                return
+    except Exception:
+        pass
+
+
+def _skill_lookup(store: BrainStore, query: str, k: int = DEFAULT_TOP_K, skill: str = "") -> str:
+    """Retrieval, not loading: return the handful of paragraphs across the
+    whole skill library that answer `query`.
+
+    This is the step that replaces "invoke the skill and read all of it".
+    The reply is capped at a few thousand characters no matter how many
+    skills matched, and — unlike a loaded body — it is small enough to
+    survive in the conversation for the rest of the turn without dominating
+    every subsequent prompt.
+    """
+    if not query.strip():
+        return "ERROR: empty query"
+    index = _sync_skill_index(store)
+    if not index.enabled:
+        return ("passage index unavailable (SQLite built without FTS5) — "
+                "fall back to search_brain + invoke_skill.")
+    passages = index.search(query, k=k, budget_chars=DEFAULT_BUDGET_CHARS,
+                            source=skill.split(":", 1)[-1].strip())
+    if not passages:
+        return (f"no passage matches {query!r}. Try browse_brain() for the group list, "
+                f"or search_brain for skill ids.")
+
+    seen: list[str] = []
+    for p in passages:
+        if p.source not in seen:
+            seen.append(p.source)
+            _touch_skill_node(store, p.source)
+    header = (
+        f"{len(passages)} passage(s) from {len(seen)} skill(s), distilled — not full bodies. "
+        f"Call invoke_skill(name=<skill>, query=<what you need>) to go deeper in one skill, "
+        f"or invoke_skill(name=<skill>, full=true) only if you truly need the whole checklist."
+    )
+    return header + "\n\n" + "\n\n".join(p.render() for p in passages)
+
+
+def _resolve_skill_path(store: BrainStore, name: str) -> Path | str:
+    """Locate a skill's SKILL.md, or return the error string to hand back.
+
+    We don't know the group folder up front (depends on whether the skill
+    came from addon/, external_skills/, or the user's own folders), so both
+    roots are globbed.
     """
     bare = name.split(":", 1)[-1].strip()
     if not bare:
@@ -292,9 +401,6 @@ def _invoke_skill(store: BrainStore, name: str) -> str:
         return "ERROR: no project_dir set — open the app once so the brain has a project to work on"
     root = Path(project_root)
 
-    # Walk the addon tree. We don't know the group folder name up front
-    # (depends on whether the skill was imported from addon/, external_skills/,
-    # or merged with the user's custom folders), so glob both roots.
     candidates = sorted(root.glob(f"addon/skills/*/{bare}/SKILL.md"))
     candidates += sorted(root.glob(f"external_skills/*/{bare}/SKILL.md"))
     if not candidates:
@@ -305,30 +411,65 @@ def _invoke_skill(store: BrainStore, name: str) -> str:
     if len(candidates) > 1:
         names = ", ".join(f"{p.parent.parent.name}/{p.parent.name}" for p in candidates)
         return f"ambiguous name {bare!r} — found in: {names}. Use the full path."
-    skill_md = candidates[0]
+    return candidates[0]
+
+
+def _invoke_skill(store: BrainStore, name: str, query: str = "", full: bool = False) -> str:
+    """The harness's equivalent of the runtime's `Skill` tool — but
+    distilled by default.
+
+    Small skills (under `SKILL_FULL_LOAD_BYTES`) come back whole: the RAG
+    detour would cost more than it saves. Anything larger comes back as a
+    heading outline plus the passages matching `query` (or the skill's own
+    name, when no query is given), with `full=True` as the explicit opt-in
+    for the entire body. The point is that the default path can't quietly
+    drop 26,000 tokens into a conversation that then re-sends them on every
+    tool iteration for the rest of the turn.
+
+    Resolves `addon/skills/<group>/<name>/SKILL.md` under the project root —
+    the source-of-truth content, not the parsed-fields view `load_skill`
+    returns. Strips any `group:` prefix ('superpowers:brainstorming').
+    """
+    resolved = _resolve_skill_path(store, name)
+    if isinstance(resolved, str):
+        return resolved
+    skill_md = resolved
+    bare = skill_md.parent.name
 
     data = skill_md.read_text(encoding="utf-8")
     if len(data) > MAX_READ_BYTES:
         return f"ERROR: {skill_md} is {len(data)} bytes, over the {MAX_READ_BYTES}-byte read limit"
 
-    # Best-effort: increment usage on the matching brain node and
-    # publish a skill_used event so the viz pulses the node. The brain
-    # may not have re-imported this skill yet — that's fine, the file
-    # read is the answer either way.
-    try:
-        hits = store.search(bare, limit=5)
-        for h in hits:
-            if h["label"] == bare:
-                store.touch_usage(h["id"])
-                bus.publish({
-                    "kind": "skill_used", "id": h["id"], "label": h["label"],
-                    "route": COORDINATOR_ID,
-                })
-                break
-    except Exception:
-        pass  # touch_usage is best-effort; the file read is the answer
+    _touch_skill_node(store, bare)
 
-    return data
+    if full or len(data) <= SKILL_FULL_LOAD_BYTES:
+        return data
+
+    index = _sync_skill_index(store)
+    if not index.enabled:
+        # No FTS5 to distil with. The old behaviour — whole body — beats
+        # returning nothing.
+        return data
+
+    index.sync_file(skill_md, source=bare)
+    passages = index.search(query or bare.replace("-", " "), k=DEFAULT_TOP_K,
+                            budget_chars=DEFAULT_BUDGET_CHARS, source=bare)
+    if not passages:
+        passages = index.search(bare.replace("-", " "), k=2, source=bare)
+
+    outline = index.outline(bare)
+    parts = [
+        f"# {bare} (distilled — {len(data):,} chars on disk, showing the relevant parts)",
+    ]
+    if outline:
+        parts.append("Sections: " + " | ".join(outline[:25]))
+    if passages:
+        parts.append("\n" + "\n\n".join(p.render() for p in passages))
+    parts.append(
+        f"\nNeed a different section? invoke_skill(name={bare!r}, query='<the section or topic>'). "
+        f"Need the whole checklist verbatim? invoke_skill(name={bare!r}, full=true)."
+    )
+    return "\n".join(parts)
 
 
 def _list_projects(store: BrainStore) -> str:
@@ -418,6 +559,7 @@ def build_tool_registry(store: BrainStore, sandbox: Sandbox | None = None, on_ev
     sandbox = sandbox or Sandbox.unrestricted()
     reg = ToolRegistry()
     reg.on_event = on_event
+    reg.sandbox = sandbox
     _register(reg, store, ToolSpec(
         name="read_file",
         description="Read a text file's contents.",
@@ -439,6 +581,30 @@ def build_tool_registry(store: BrainStore, sandbox: Sandbox | None = None, on_ev
         description="List a directory's immediate contents.",
         input_schema={"type": "object", "properties": {"path": {"type": "string"}}},
         fn=lambda path=".": _list_dir(sandbox, path),
+    ))
+    _register(reg, store, ToolSpec(
+        name="request_external_read",
+        description=(
+            "Ask the human for one-turn permission to read a directory tree OUTSIDE "
+            "the sandbox root — e.g. a reference project the user wants you to study "
+            "before writing something compatible with it. Grants are: (1) exactly the "
+            "folder given plus all subfolders, never a parent; (2) READ-ONLY — the "
+            "file-write tool refuses paths under the grant, and destructive shell "
+            "commands (rm, del, mv, rmdir, git reset --hard, git clean, output "
+            "redirection into the tree, etc.) are refused too; (3) valid for THIS "
+            "user turn only — the next user message clears every grant and you must "
+            "ask again. Provide a clear `reason` — the human sees it in the prompt "
+            "and it is what convinces them to approve."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "absolute path to the folder to read"},
+                "reason": {"type": "string", "description": "one sentence: what you'll look for and why"},
+            },
+            "required": ["path", "reason"],
+        },
+        fn=lambda path, reason: _request_external_read(sandbox, path, reason),
     ))
     _register(reg, store, ToolSpec(
         name="run_shell",
@@ -568,10 +734,40 @@ def build_tool_registry(store: BrainStore, sandbox: Sandbox | None = None, on_ev
             "the runtime's `Skill` tool, and the entry point for superpowers' methodology. Use this "
             "before any creative work or bug fix — the using-superpowers bootstrap says so. Accepts "
             "the name with or without a group prefix (e.g. 'brainstorming' or "
-            "'superpowers:brainstorming')."
+            "'superpowers:brainstorming'). Returns the relevant sections plus the skill's section "
+            "list, not the whole file — pass `query` to steer which sections come back, and "
+            "`full=true` only when you genuinely need the entire checklist verbatim."
         ),
-        input_schema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
-        fn=lambda name: _invoke_skill(store, name),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "query": {"type": "string", "description": "what you need from the skill; steers which sections come back"},
+                "full": {"type": "boolean", "description": "return the entire SKILL.md — expensive, use sparingly"},
+            },
+            "required": ["name"],
+        },
+        fn=lambda name, query="", full=False: _invoke_skill(store, name, query, full),
+    ))
+    _register(reg, store, ToolSpec(
+        name="skill_lookup",
+        description=(
+            "Retrieve the specific paragraphs from the skill library that answer a question, without "
+            "loading any skill in full. This is the cheap first move for 'how should I do X' — it "
+            "searches inside every SKILL.md and returns a few matching passages with their skill name "
+            "and heading. Follow up with invoke_skill(name, query=...) only if a passage shows you need "
+            "more of that one skill."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "k": {"type": "integer", "description": "max passages, default 4"},
+                "skill": {"type": "string", "description": "restrict to one skill name"},
+            },
+            "required": ["query"],
+        },
+        fn=lambda query, k=DEFAULT_TOP_K, skill="": _skill_lookup(store, query, k, skill),
     ))
     _register(reg, store, ToolSpec(
         name="learn_skill",

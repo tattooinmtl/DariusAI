@@ -1,0 +1,23 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Remove Leading and Trailing Characters" description = "If a given character (such as a space) appears at the beginning or end of the given string, removes that character." preview="code" type="block">
+<insertText location="beforeSelection">
+<![CDATA[function removeLeadingAndTrailingChar (inputString, removeChar) 
+{
+	var returnString = inputString;
+	if (removeChar.length)
+	{
+	  while(''+returnString.charAt(0)==removeChar)
+		{
+		  returnString=returnString.substring(1,returnString.length);
+		}
+		while(''+returnString.charAt(returnString.length-1)==removeChar)
+	  {
+	    returnString=returnString.substring(0,returnString.length-1);
+	  }
+	}
+	return returnString;
+}]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

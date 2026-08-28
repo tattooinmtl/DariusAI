@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Title and Hanging List" description = "An indented list of links with title at top left." preview="html" type="block">
+<insertText location="beforeSelection">
+<![CDATA[<table width="100%" border="0" cellspacing="0" cellpadding="2" style="background-color: #cccccc;">
+ <tbody><tr> 
+    <td style="vertical-align: top;">Lorem:</td>
+    <td width="100%"><a href="#">Lorum</a> | <a href="#">Ipsum</a> | <a href="#">Dolar</a> 
+      | <a href="#">Sic Amet</a> | <a href="#">Consectetur</a> | <a href="#">Lorum</a> 
+      | <a href="#">Ipsum</a> | <a href="#">Dolar</a> | <a href="#">Sic Amet</a> 
+      | <a href="#">Consectetur</a> </td>
+  </tr></tbody>
+</table>]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>

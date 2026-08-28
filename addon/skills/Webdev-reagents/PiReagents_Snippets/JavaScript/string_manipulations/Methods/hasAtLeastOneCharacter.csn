@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<snippet name = "Has At Least One Character" description = "Determines whether a given string is at least one character long." preview="code" type="wrap">
+<insertText location="beforeSelection">
+<![CDATA[function hasAtLeastOneCharacter (inputString)
+{
+  return inputString.length;
+}]]>
+</insertText>
+<insertText location="afterSelection"><![CDATA[]]>
+</insertText>
+</snippet>
