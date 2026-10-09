@@ -140,7 +140,7 @@ class Splash:
         width = max(360, logo_w + 40)
         term_h = 120
         bar_h = 8
-        height = logo_w + term_h + bar_h + 60
+        height = logo_w + term_h + bar_h + 80   # +20 for the version line
 
         sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
         x, y = (sw - width) // 2, (sh - height) // 2
@@ -150,10 +150,18 @@ class Splash:
         outer.pack(fill="both", expand=True, padx=1, pady=1)
 
         if self.logo_img is not None:
-            tk.Label(outer, image=self.logo_img, bg=TERM_BG, bd=0).pack(pady=(16, 10))
+            tk.Label(outer, image=self.logo_img, bg=TERM_BG, bd=0).pack(pady=(16, 4))
         else:
             tk.Label(outer, text="DariusAI", bg=TERM_BG, fg=TERM_FG,
-                     font=("Consolas", 28, "bold"), bd=0).pack(pady=(28, 18))
+                     font=("Consolas", 28, "bold"), bd=0).pack(pady=(28, 4))
+
+        # The version stays on screen for the whole launch. It used to appear
+        # only inside the first log line, which scrolled away within a second,
+        # so there was no way to tell from the splash which build had started.
+        # dariusai/__init__ imports nothing but `re`, so this costs nothing.
+        from dariusai import VERSION_DISPLAY, __version__
+        tk.Label(outer, text=f"{VERSION_DISPLAY}  ·  v{__version__}", bg=TERM_BG, fg=TERM_DIM,
+                 font=("Consolas", 10), bd=0).pack(pady=(0, 10))
 
         term_frame = tk.Frame(outer, bg=PANEL_BG, highlightbackground=BORDER, highlightthickness=1)
         term_frame.pack(padx=18, fill="x")

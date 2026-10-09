@@ -803,6 +803,35 @@
     });
   }
 
+  // One /ws/events socket for the whole window. The neural view and the
+  // console used to open one each, so every launch and every reconnect
+  // replayed the server's history twice. Listeners get every event; status
+  // listeners get true/false as the socket opens and drops.
+  var EventStream = (function () {
+    var listeners = [], statusListeners = [], ws = null, open = false;
+    function setStatus(v) {
+      open = v;
+      statusListeners.forEach(function (fn) { try { fn(v); } catch (e) {} });
+    }
+    function connect() {
+      try {
+        var proto = location.protocol === "https:" ? "wss:" : "ws:";
+        ws = new WebSocket(proto + "//" + location.host + "/ws/events");
+        ws.onopen = function () { setStatus(true); };
+        ws.onmessage = function (ev) {
+          var data;
+          try { data = JSON.parse(ev.data); } catch (e) { return; }
+          listeners.forEach(function (fn) { try { fn(data); } catch (e) {} });
+        };
+        ws.onclose = function () { setStatus(false); setTimeout(connect, 2000); };
+      } catch (e) { setTimeout(connect, 2000); }
+    }
+    return {
+      on: function (fn) { listeners.push(fn); if (!ws) connect(); },
+      onStatus: function (fn) { statusListeners.push(fn); fn(open); },
+    };
+  })();
+
   // Version comes from the server (/api/version -> dariusai.__version__), so
   // the title bar badge and the About box can never claim a version the
   // running package isn't. Filled in asynchronously; both readers tolerate
@@ -2332,10 +2361,18 @@
       return items;
     }
 
+    // Rebuilt only when the set of categories changes, and each chip drawn
+    // from the filter it controls. It used to be redrawn every 10 s with
+    // every chip "on", while a category the user had hidden stayed hidden.
+    var legendKeys = null;
     function buildLegend(graph) {
       var el = document.getElementById("nvLegend");
-      el.innerHTML = legendItems(graph).map(function (it) {
-        return "<button class='chip on' data-key='" + it.key + "'>" +
+      var items = legendItems(graph);
+      var keys = items.map(function (it) { return it.key; }).join("|");
+      if (keys === legendKeys) return;
+      legendKeys = keys;
+      el.innerHTML = items.map(function (it) {
+        return "<button class='chip" + (filters[it.key] === false ? "" : " on") + "' data-key='" + it.key + "'>" +
           "<span class='dot' style='background:" + it.color + "'></span>" + it.label + "</button>";
       }).join("");
       el.querySelectorAll(".chip").forEach(function (chip) {
@@ -2354,6 +2391,7 @@
 
     function refreshGraph() {
       return fetch("/api/graph").then(function (r) { return r.json(); }).then(function (graph) {
+        var added = 0;
         graph.nodes.forEach(function (n) {
           var existing = byId.get(n.id);
           if (existing) {
@@ -2364,12 +2402,26 @@
             n.x = r * Math.sin(b) * Math.cos(a); n.y = r * Math.sin(b) * Math.sin(a); n.z = r * Math.cos(b);
             n.vx = 0; n.vy = 0; n.vz = 0; n.fx = null; n.fy = null; n.fz = null;
             nodes.push(n); byId.set(n.id, n);
+            added++;
           }
         });
+        // Drop nodes the server no longer has (deleted skills), or they
+        // linger as ghosts that pulses still try to reach.
+        var live = new Set(graph.nodes.map(function (n) { return n.id; }));
+        if (live.size !== nodes.length) {
+          nodes = nodes.filter(function (n) {
+            if (live.has(n.id)) return true;
+            byId.delete(n.id);
+            return false;
+          });
+        }
         edges = graph.edges;
         buildLegend(graph);      // new categories become filterable chips
         renderStats(graph);
-        alpha = Math.max(alpha, 0.3);
+        // Reheat the layout only when something new has to find its place.
+        // Reheating on every 10 s poll kept the O(n²) physics running about
+        // 40% of the time on an unchanged graph.
+        if (added) alpha = Math.max(alpha, 0.3);
         return graph;
       });
     }
@@ -2499,13 +2551,62 @@
       }).join("");
     }
 
+    // Graph refreshes coalesce: a burst of edits shares one fetch instead of
+    // each firing its own copy of the full payload.
+    var refreshInFlight = null;
+    function refreshSoon() {
+      if (!refreshInFlight) {
+        refreshInFlight = refreshGraph().finally(function () { refreshInFlight = null; });
+      }
+      return refreshInFlight;
+    }
+
+    // Walk a charge along a server-sent route (coordinator → group → node),
+    // hop by hop, so you watch the brain reach out instead of a straight
+    // line through empty space. Only the last hop earns the lasting glow.
+    function walkPath(path, color, hopMs, finalDur) {
+      if (!path || path.length < 2) return;
+      for (var h = 0; h + 1 < path.length; h++) {
+        (function (from, to, hop) {
+          setTimeout(function () {
+            pulse(from, to, color, hopMs + 60);
+            var last = hop === path.length - 2;
+            flashNode(to, color, last ? finalDur : 450, last);
+          }, hop * hopMs);
+        })(path[h], path[h + 1], h);
+      }
+    }
+
+    // Tools in flight: lit from tool_start until tool_call, however long the
+    // call takes. A counter, because the same tool can overlap itself.
+    var running = new Map();
+    var RUNNING_HOLD_MS = 10 * 60 * 1000;
+
+    var GRAPH_CHANGING = { conversation_logged: 1, skill_learned: 1, node_edited: 1,
+                           node_deleted: 1, external_imported: 1 };
+    var replayNeedsRefresh = false;
+
     function handleActivity(data) {
+      // History replayed on (re)connect is state, not activity. Animating it
+      // flashed fifty stale events at once, and every graph-changing one
+      // fetched the whole graph again — up to fifty copies per launch.
+      if (data.kind === "replay_done") {
+        if (replayNeedsRefresh) { replayNeedsRefresh = false; refreshSoon(); }
+        return;
+      }
+      if (data.replay) {
+        if (GRAPH_CHANGING[data.kind]) replayNeedsRefresh = true;
+        if (data.kind === "agent_turn") thinking = data.phase === "start";
+        return;
+      }
+
       var route = data.route || COORDINATOR_ID;
       if (data.kind === "agent_turn") {
         // Thinking is the coordinator's own state — it pulses, the rest of
         // the brain stays quiet until something is actually consulted.
         thinking = data.phase === "start";
         if (thinking) { logActivity("thinking…"); flashNode(COORDINATOR_ID, "#eaf2ff", 900, false); }
+        else running.clear();
       } else if (data.kind === "brain_search") {
         // Candidates: a brief, dim shimmer. Considered is not the same as
         // used, and the display should be able to tell you which is which.
@@ -2514,78 +2615,71 @@
           setTimeout(function () { flashNode(id, "#7c84ab", 420, false); }, i * 45);
         });
       } else if (data.kind === "conversation_logged") {
-        // Walk the charge along the path the server sent — brain to the
-        // conversations branch, then branch to the atom that was just
-        // grown. Hops are staggered so you see it travel outward rather
-        // than the whole limb lighting simultaneously.
         logActivity("recorded: " + (data.label || data.id));
-        refreshGraph().then(function () {
-          var path = data.path || [COORDINATOR_ID, data.branch, data.id];
-          for (var h = 0; h + 1 < path.length; h++) {
-            (function (from, to, hop) {
-              setTimeout(function () {
-                pulse(from, to, COLORS.conversation, 620);
-                flashNode(to, COLORS.conversation, hop === path.length - 2 ? 1100 : 500,
-                          hop === path.length - 2);
-              }, hop * 380);
-            })(path[h], path[h + 1], h);
-          }
+        refreshSoon().then(function () {
+          walkPath(data.path || [COORDINATOR_ID, data.branch, data.id], COLORS.conversation, 380, 1100);
         });
       } else if (data.kind === "skill_used") {
-        // The one skill actually read — a real bolt from the brain to it,
-        // and a sustained glow so you can see what's informing the answer.
+        // The one skill actually read — a bolt down its branch, and a
+        // sustained glow so you can see what's informing the answer.
         logActivity("using skill: " + (data.label || data.id));
-        pulse(COORDINATOR_ID, data.id, "#6ee7b7", 650);
-        flashNode(data.id, "#6ee7b7", 950);
+        walkPath(data.path || [COORDINATOR_ID, data.id], "#6ee7b7", 260, 950);
       } else if (data.kind === "skill_learned") {
         logActivity("learned: " + (data.label || data.id));
-        refreshGraph().then(function () { pulse(COORDINATOR_ID, data.id, "#6ee7b7", 700); flashNode(data.id, "#6ee7b7", 1000); });
+        refreshSoon().then(function () { pulse(COORDINATOR_ID, data.id, "#6ee7b7", 700); flashNode(data.id, "#6ee7b7", 1000); });
       } else if (data.kind === "node_edited") {
-        if (!data.replay) logActivity("edited: " + (data.label || data.id));
-        refreshGraph().then(function () { pulse(COORDINATOR_ID, data.id, "#4fd1ff", 600); flashNode(data.id, "#4fd1ff", 800); });
+        logActivity("edited: " + (data.label || data.id));
+        refreshSoon().then(function () { pulse(COORDINATOR_ID, data.id, "#4fd1ff", 600); flashNode(data.id, "#4fd1ff", 800); });
       } else if (data.kind === "node_deleted") {
         logActivity("deleted: " + data.id);
-        refreshGraph();
+        refreshSoon();
+      } else if (data.kind === "external_imported") {
+        logActivity("imported " + (data.count || 0) + " skills");
+        refreshSoon();
       } else if (data.kind === "file_saved") {
         logActivity("saved: " + data.path);
-      } else if (data.kind === "tool_call" || data.kind === "node_used") {
-        if (!data.replay) logActivity((data.tool || "used") + ": " + (data.label || data.id || ""));
-        var target = byId.has(route) ? route : null;
-        if (target && target !== COORDINATOR_ID) {
-          pulse(COORDINATOR_ID, target, "#6ea8ff", 500);
-          flashNode(target, "#6ea8ff", 700);  // sustain: the path stays live while the tool is in use
+      } else if (data.kind === "tool_start") {
+        logActivity("▶ " + (data.tool || "tool"));
+        if (byId.has(route) && route !== COORDINATOR_ID) {
+          running.set(route, (running.get(route) || 0) + 1);
+          pulse(COORDINATOR_ID, route, "#6ea8ff", 500);
+          flashNode(route, "#6ea8ff", 700);
+          inUseUntil.set(route, performance.now() + RUNNING_HOLD_MS);  // lit until it ends
         } else {
-          // Generic tool activity is real, but unless a specific node is
-          // named it should not mark the whole coordinator star as "in use".
           flashNode(COORDINATOR_ID, "#6ea8ff", 500, false);
+        }
+      } else if (data.kind === "tool_call") {
+        var secs = data.ms != null ? " (" + (data.ms / 1000).toFixed(data.ms < 10000 ? 1 : 0) + " s)" : "";
+        logActivity((data.ok === false ? "✗ " : "✓ ") + (data.tool || "tool") + secs);
+        if (byId.has(route) && route !== COORDINATOR_ID) {
+          var left = (running.get(route) || 1) - 1;
+          if (left > 0) running.set(route, left); else running.delete(route);
+          flashNode(route, data.ok === false ? "#f87171" : "#6ee7b7", 700);
+          if (!running.has(route)) inUseUntil.set(route, performance.now() + 4000);  // afterglow
         }
       }
     }
 
     function connectEvents() {
-      try {
-        var proto = location.protocol === "https:" ? "wss:" : "ws:";
-        var ws = new WebSocket(proto + "//" + location.host + "/ws/events");
-        ws.onmessage = function (ev) { try { handleActivity(JSON.parse(ev.data)); } catch (e) {} };
-        ws.onopen = function () { document.getElementById("nvLiveDot").style.background = "#6ee7b7"; };
-        ws.onerror = function () { document.getElementById("nvLiveDot").style.background = "#f87171"; };
-        ws.onclose = function () { document.getElementById("nvLiveDot").style.background = "#f87171"; setTimeout(connectEvents, 2000); };
-      } catch (e) {}
+      EventStream.onStatus(function (isOpen) {
+        document.getElementById("nvLiveDot").style.background = isOpen ? "#6ee7b7" : "#f87171";
+      });
+      EventStream.on(handleActivity);
     }
 
     document.getElementById("nvSearch") /* placeholder to keep hud id lookups local */;
     hud.querySelector("#nvSearch").addEventListener("input", function (ev) { searchTerm = ev.target.value.trim().toLowerCase(); });
 
-    refreshGraph().then(function () {
+    function start() {
       initPositions();
-      buildLegend();
       loop();
       connectEvents();
-      setInterval(refreshGraph, 10000);
-    }).catch(function (err) {
+      setInterval(refreshSoon, 10000);
+    }
+    refreshGraph().then(start).catch(function (err) {
       document.getElementById("nvStats").textContent = "failed to load graph: " + err.message + " — retrying…";
       setTimeout(function () {
-        refreshGraph().then(function () { initPositions(); buildLegend(); loop(); connectEvents(); setInterval(refreshGraph, 10000); })
+        refreshGraph().then(start)
           .catch(function (err2) { document.getElementById("nvStats").textContent = "failed to load graph: " + err2.message; });
       }, 1500);
     });
@@ -4477,22 +4571,16 @@
       out.innerHTML = ""; total = 0; countEl.textContent = "0 events";
     });
 
-    var ws = null;
-    function connect() {
-      try {
-        var proto = location.protocol === "https:" ? "wss:" : "ws:";
-        ws = new WebSocket(proto + "//" + location.host + "/ws/events");
-        ws.onopen = function () { dot.style.background = "#6ee7b7"; };
-        ws.onmessage = function (e) { try { onEvent(JSON.parse(e.data)); } catch (err) {} };
-        ws.onerror = function () { dot.style.background = "#f87171"; };
-        ws.onclose = function () {
-          dot.style.background = "#f87171";
-          add("console", "event stream disconnected — retrying", "warn");
-          setTimeout(connect, 2000);
-        };
-      } catch (e) { setTimeout(connect, 2000); }
-    }
-    connect();
+    var wasOpen = false;
+    EventStream.onStatus(function (isOpen) {
+      dot.style.background = isOpen ? "#6ee7b7" : "#f87171";
+      if (wasOpen && !isOpen) add("console", "event stream disconnected — retrying", "warn");
+      wasOpen = isOpen;
+    });
+    EventStream.on(function (ev) {
+      if (ev.kind === "replay_done") return;   // stream bookkeeping, not activity
+      onEvent(ev);
+    });
 
     // Errors in the page itself are app activity too — without this they are
     // invisible unless devtools happens to be open, which for a packaged

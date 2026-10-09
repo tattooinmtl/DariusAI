@@ -18,7 +18,9 @@ def test_settings_endpoint_roundtrip(tmp_path):
     r = client.put("/api/settings", json={"key": "theme", "value": "dark"})
     assert r.status_code == 200
     r2 = client.get("/api/settings")
-    assert r2.json() == {"theme": "dark"}
+    # create_app records the project it was opened on (the editor and the
+    # sandbox both read it back), so it sits beside the key we wrote.
+    assert r2.json() == {"theme": "dark", "project_dir": str(tmp_path)}
 
 
 def test_provider_endpoints_never_leak_plaintext_key(tmp_path):

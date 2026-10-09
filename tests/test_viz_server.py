@@ -82,6 +82,9 @@ def test_websocket_replays_recent_and_streams_live(tmp_path):
     bus.clear()  # `bus` is a process-wide singleton; isolate from other tests' history
     store, client = make_client(tmp_path)
     with client.websocket_connect("/ws/events") as ws:
+        # History is empty, so the stream opens with only the end-of-replay
+        # marker the page uses to stop treating events as history.
+        assert ws.receive_json() == {"kind": "replay_done"}
         skill = store.add_skill(Skill(id="skill-live", title="Live one"))
         bus.publish({"kind": "skill_learned", "id": skill.id, "label": skill.title})
         msg = ws.receive_json()

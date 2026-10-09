@@ -1300,10 +1300,15 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
     @app.websocket("/ws/events")
     async def ws_events(ws: WebSocket):
         await ws.accept()
-        for event in bus.recent():
-            await ws.send_text(json.dumps({**event, "replay": True}))
+        # Subscribe before replaying, so nothing published during the replay
+        # falls in the gap. `replay_done` tells the page where history ends:
+        # it applies the replayed state once instead of animating stale
+        # events and refetching the graph for each one.
         q = bus.subscribe()
         try:
+            for event in bus.recent():
+                await ws.send_text(json.dumps({**event, "replay": True}))
+            await ws.send_text(json.dumps({"kind": "replay_done"}))
             while True:
                 event = await q.get()
                 await ws.send_text(json.dumps(event))

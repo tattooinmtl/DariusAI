@@ -245,7 +245,12 @@ class BrainStore:
     def touch_usage(self, node_id: str) -> None:
         self.conn.execute("UPDATE nodes SET usage_count = usage_count + 1 WHERE id = ?", (node_id,))
         self.conn.commit()
-        self._load_graph()
+        # A counter changed, not the shape of the graph — bump it in place.
+        # This runs on every skill read in a turn; reloading every node and
+        # edge from SQLite each time was pure waste.
+        if node_id in self.graph.graph:
+            data = self.graph.graph.nodes[node_id]
+            data["usage_count"] = int(data.get("usage_count") or 0) + 1
 
     # ---- reads ------------------------------------------------------------
 

@@ -8,6 +8,7 @@ viz window is looking at.
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -76,13 +77,20 @@ class ToolRegistry:
         if not spec:
             return f"ERROR: unknown tool {name!r}"
         route = self.node_id_for_tool(name)
+        # Start and end, not just end: a 30 s run_shell used to show nothing
+        # until it had already finished. The viz holds the node lit between
+        # the two, so what is running right now is what glows.
+        bus.publish({"kind": "tool_start", "tool": name, "route": route, "id": route, "label": spec.name})
+        started = time.perf_counter()
         try:
             result = spec.fn(**args)
+            ok = True
         except Exception as exc:  # a tool failure is data the model should see, not a crash
-            bus.publish({"kind": "tool_call", "tool": name, "ok": False, "route": route, "id": route})
-            return f"ERROR: {exc}"
-        bus.publish({"kind": "tool_call", "tool": name, "ok": True, "route": route, "id": route})
-        bus.publish({"kind": "node_used", "id": route, "label": spec.name, "route": route})
+            result, ok = f"ERROR: {exc}", False
+        bus.publish({
+            "kind": "tool_call", "tool": name, "ok": ok, "route": route, "id": route,
+            "label": spec.name, "ms": round((time.perf_counter() - started) * 1000),
+        })
         return result
 
 
@@ -246,10 +254,7 @@ def _load_skill(store: BrainStore, skill_id: str) -> str:
     except (KeyError, FileNotFoundError):
         return f"no skill with id {skill_id!r} — use search_brain to find the right id first."
     store.touch_usage(skill_id)  # usage drives node size in the viz and search ranking
-    # The one node actually being read — this is the event that earns a bolt.
-    bus.publish({
-        "kind": "skill_used", "id": skill_id, "label": skill.title, "route": COORDINATOR_ID,
-    })
+    _publish_skill_used(store, skill_id, skill.title)
 
     parts = [f"# {skill.title}  [{skill.category}]"]
     if skill.tags:
@@ -299,14 +304,44 @@ def _set_todos(reg: ToolRegistry, items: list[dict[str, str]]) -> str:
 # ---- skill distillation (RAG over SKILL.md, instead of loading it whole) ---
 
 
+# The harness ships its skill library next to the package — the same folders
+# `dariusai import-addon` reads. They are looked up here, not only under the
+# user's project: with any other project open, the old project-relative
+# lookup found zero skills and skill_lookup/invoke_skill silently went dark.
+INSTALL_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _skill_roots(store: BrainStore) -> list[Path]:
+    """Folders holding `addon/skills` and `external_skills`, highest priority
+    first: the open project (a project may carry its own skills), then the
+    install. Deduplicated, so the harness repo opened as a project counts once."""
+    roots: list[Path] = []
+    for raw in (store.get_setting("project_dir", ""), INSTALL_ROOT):
+        if not raw:
+            continue
+        root = Path(raw).resolve()
+        if root not in roots:
+            roots.append(root)
+    return roots
+
+
+def _skills_under(root: Path, name: str = "*") -> list[Path]:
+    return sorted(root.glob(f"addon/skills/*/{name}/SKILL.md")) + \
+        sorted(root.glob(f"external_skills/*/{name}/SKILL.md"))
+
+
 def _skill_files(store: BrainStore) -> list[Path]:
-    """Every SKILL.md the harness can invoke, from both libraries."""
-    project_root = store.get_setting("project_dir", "")
-    if not project_root:
-        return []
-    root = Path(project_root)
-    return sorted(root.glob("addon/skills/*/*/SKILL.md")) + \
-        sorted(root.glob("external_skills/*/*/SKILL.md"))
+    """Every SKILL.md the harness can invoke, from both libraries. A skill
+    name found in a higher-priority root shadows the same name further down."""
+    seen: set[str] = set()
+    files: list[Path] = []
+    for root in _skill_roots(store):
+        for path in _skills_under(root):
+            if path.parent.name in seen:
+                continue
+            seen.add(path.parent.name)
+            files.append(path)
+    return files
 
 
 def _passage_index(store: BrainStore) -> PassageIndex:
@@ -333,19 +368,41 @@ def _sync_skill_index(store: BrainStore, force: bool = False) -> PassageIndex:
     return index
 
 
+def _skill_node_id(store: BrainStore, name: str) -> str | None:
+    """The brain node for a skill folder name, by the ids the importers mint
+    (`addon-<name>`, `extsk-[<agent>-]<name>`, `omni-<name>`).
+
+    Matched by id, not by title: a folder is `brainstorming` while its title
+    is "Brainstorming Ideas Into Designs", so the old label match lit 5 of
+    181 skills and the rest of the library never showed up in the view."""
+    nodes = store.graph.graph
+    for candidate in ("addon-" + name, "omni-" + name, "extsk-" + name):
+        if candidate in nodes:
+            return candidate
+    suffix = "-" + name
+    return next((n for n in nodes if n.startswith("extsk-") and n.endswith(suffix)), None)
+
+
+def _publish_skill_used(store: BrainStore, node_id: str, label: str) -> None:
+    """The one node actually being read — this is the event that earns a
+    bolt. Carries the graph route so the viz walks coordinator → group →
+    skill rather than drawing a straight line through empty space."""
+    bus.publish({
+        "kind": "skill_used", "id": node_id, "label": label, "route": COORDINATOR_ID,
+        "path": store.graph.lineage(node_id) or [COORDINATOR_ID, node_id],
+    })
+
+
 def _touch_skill_node(store: BrainStore, name: str) -> None:
     """Best-effort usage bump + viz pulse for a skill read by name. The
     brain may not have imported the skill yet — that's fine, the file is
     the answer either way."""
     try:
-        for h in store.search(name, limit=5):
-            if h["label"] == name:
-                store.touch_usage(h["id"])
-                bus.publish({
-                    "kind": "skill_used", "id": h["id"], "label": h["label"],
-                    "route": COORDINATOR_ID,
-                })
-                return
+        node_id = _skill_node_id(store, name)
+        if node_id is None:
+            return
+        store.touch_usage(node_id)
+        _publish_skill_used(store, node_id, store.graph.graph.nodes[node_id].get("label", name))
     except Exception:
         pass
 
@@ -390,19 +447,17 @@ def _resolve_skill_path(store: BrainStore, name: str) -> Path | str:
 
     We don't know the group folder up front (depends on whether the skill
     came from addon/, external_skills/, or the user's own folders), so both
-    roots are globbed.
+    libraries are globbed, in the open project first and then the install.
     """
     bare = name.split(":", 1)[-1].strip()
     if not bare:
         return "ERROR: empty skill name"
 
-    project_root = store.get_setting("project_dir", "")
-    if not project_root:
-        return "ERROR: no project_dir set — open the app once so the brain has a project to work on"
-    root = Path(project_root)
-
-    candidates = sorted(root.glob(f"addon/skills/*/{bare}/SKILL.md"))
-    candidates += sorted(root.glob(f"external_skills/*/{bare}/SKILL.md"))
+    candidates: list[Path] = []
+    for root in _skill_roots(store):
+        candidates = _skills_under(root, bare)
+        if candidates:
+            break   # the first root that has it wins; see _skill_roots
     if not candidates:
         return (
             f"no skill named {bare!r}. Use `browse_brain()` (no argument) for "

@@ -127,3 +127,6 @@ desktop.ini
 #   logo1.png, *.png notes - reference material worth keeping backed up
 #   version_lock.json      - pairs the source fingerprint with its version
 #   tools/, tests/         - the verifier and the suite are part of the app
+
+# Throwaway brain the /tools command used to create in the launch folder
+/.dariusai-bogus/

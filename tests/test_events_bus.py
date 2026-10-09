@@ -50,3 +50,42 @@ async def _unsubscribed_queue_gets_nothing():
 
 def test_unsubscribe_stops_delivery():
     assert asyncio.run(_unsubscribed_queue_gets_nothing())
+
+
+async def _worker_thread_publish_wakes_loop():
+    # A chat turn runs under asyncio.to_thread, so tool calls publish from a
+    # worker thread. The idle loop must wake at once — before the fix the
+    # event waited for some unrelated wake-up (uvicorn's 100 ms tick).
+    import threading
+    import time
+
+    bus = ActivityBus()
+    q = bus.subscribe()
+    sent = {}
+
+    def worker():
+        time.sleep(0.05)
+        sent["t"] = time.perf_counter()
+        bus.publish({"kind": "tool_start", "id": "tool-run_shell"})
+
+    threading.Thread(target=worker).start()
+    event = await asyncio.wait_for(q.get(), timeout=1)
+    latency_ms = (time.perf_counter() - sent["t"]) * 1000
+    assert event["id"] == "tool-run_shell"
+    assert latency_ms < 20, f"cross-thread event took {latency_ms:.1f} ms"
+    return True
+
+
+def test_worker_thread_publish_is_delivered_immediately():
+    assert asyncio.run(_worker_thread_publish_wakes_loop())
+
+
+def test_publish_after_subscriber_loop_closed_drops_it():
+    bus = ActivityBus()
+
+    async def sub():
+        return bus.subscribe()
+
+    q = asyncio.run(sub())          # that loop is closed once run() returns
+    bus.publish({"kind": "x"})      # must not raise
+    assert q not in bus._subscribers

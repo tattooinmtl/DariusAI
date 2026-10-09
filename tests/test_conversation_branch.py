@@ -114,5 +114,8 @@ PAGE = (Path(__file__).resolve().parents[1] / "src/dariusai/viz/static/index.htm
 
 def test_the_charge_walks_the_path_hop_by_hop():
     assert 'data.kind === "conversation_logged"' in PAGE
-    assert "hop * 380" in PAGE          # staggered, so it travels outward
+    # Staggered, so it travels outward: walkPath delays each hop by hopMs,
+    # and conversations walk at 380 ms a hop.
+    assert "}, hop * hopMs);" in PAGE
+    assert "COLORS.conversation, 380," in PAGE
     assert PAGE.count('data.kind === "conversation_logged"') == 1  # no duplicate handler

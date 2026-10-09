@@ -787,10 +787,10 @@ def _cmd_agents(ctx: CommandContext, args: list) -> CommandResult:
 
 def _cmd_tools(ctx: CommandContext, args: list) -> CommandResult:
     from ..agent.tools import build_tool_registry
-    from ..brain.store import BrainStore as _BS
-    from pathlib import Path as _P
-    store = _BS(_P("./.dariusai-bogus"))
-    reg = build_tool_registry(store, sandbox=None)
+    # The session's own brain. This used to open a throwaway BrainStore at
+    # ./.dariusai-bogus — relative to wherever the app was launched — and
+    # wrote a database and a note per tool into that folder every time.
+    reg = build_tool_registry(ctx.store, sandbox=None)
     items = [
         {"label": name, "summary": spec.description}
         for name, spec in reg.specs.items()

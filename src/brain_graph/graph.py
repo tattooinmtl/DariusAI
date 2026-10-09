@@ -137,6 +137,36 @@ class BrainGraph:
                 return target
         return None
 
+    def lineage(self, node_id: str) -> list[str]:
+        """The route a charge takes from the coordinator down to `node_id`.
+
+        The inverse of children_of: climb `related` edges up to the branch,
+        then stop where the coordinator's `index` edge points in. The viz walks
+        these hops in order, so a skill under a group lights coordinator →
+        group → skill instead of a straight line through empty space.
+        """
+        if node_id not in self.graph:
+            return []
+        path = [node_id]
+        current = node_id
+        while current != COORDINATOR_ID:
+            if any(d.get("kind") == "index"
+                   for d in (self.graph.get_edge_data(COORDINATOR_ID, current) or {}).values()):
+                path.append(COORDINATOR_ID)
+                break
+            parent = next(
+                (t for _, t, d in self.graph.out_edges(current, data=True)
+                 if d.get("kind") == "related" and t not in path),
+                None,
+            )
+            if parent is None:
+                path.append(COORDINATOR_ID)
+                break
+            path.append(parent)
+            current = parent
+        path.reverse()
+        return path
+
     def degree_centrality(self) -> dict[str, float]:
         return nx.degree_centrality(self.graph)
 
