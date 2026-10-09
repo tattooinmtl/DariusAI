@@ -214,6 +214,7 @@
   .chat-step-tool { color: #6ea8ff; border-left-color: rgba(110,168,255,0.4); }
   .chat-step-result { color: #8b93b8; border-left-color: rgba(139,147,184,0.3); }
   .chat-step-text { color: #c4c9e6; }
+  .chat-step-reason { color: #9aa3c7; font-style: italic; border-left-color: rgba(240,171,252,0.35); }
   .chat-thinking.done { opacity: 0.85; }
   .chat-thinking.done .chat-thinking-label { color: #6ee7b7; }
 
@@ -3180,6 +3181,10 @@
           } else {
             appendThinkingStep("text", data.text);
           }
+        } else if (data.type === "reasoning") {
+          // The model's inline <think> reasoning, split off server-side so
+          // the answer itself renders as text, not as an empty "HTML" block.
+          appendThinkingStep("reason", data.text);
         } else if (data.type === "tool_call_start") {
           appendThinkingStep("tool", "→ " + data.name + "(" + JSON.stringify(data.input) + ")");
         } else if (data.type === "tool_call_result") {

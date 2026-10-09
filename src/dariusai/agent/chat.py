@@ -12,6 +12,7 @@ agent loop.
 from __future__ import annotations
 
 import os
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -57,6 +58,35 @@ TurnCompleteCallback = Callable[[dict[str, Any]], None]
 
 def _text_of(content: list[dict[str, Any]]) -> str:
     return "".join(b.get("text", "") for b in content if b.get("type") == "text")
+
+
+_THINK_BLOCK = re.compile(r"<think>(.*?)</think>", re.DOTALL | re.IGNORECASE)
+
+
+def split_reasoning(text: str) -> tuple[str, str]:
+    """Separate inline `<think>…</think>` reasoning from the answer.
+
+    MiniMax M-series, GLM and DeepSeek-style models put their reasoning in
+    the reply text rather than in a separate block. Shown as-is, the chat
+    panel saw a reply opening with a `<tag>`, classed the paragraph as HTML
+    code and rendered an empty code block — the answer was never visible.
+    Returns (reasoning, answer). Also handles an unclosed `<think>` (the
+    whole rest is reasoning) and a reply that only carries the closing tag.
+    """
+    if not text:
+        return "", text
+    parts = [m.strip() for m in _THINK_BLOCK.findall(text)]
+    answer = _THINK_BLOCK.sub("", text)
+    lower = answer.lower()
+    if "<think>" in lower:                      # opened, never closed
+        i = lower.index("<think>")
+        parts.append(answer[i + len("<think>"):].strip())
+        answer = answer[:i]
+    elif "</think>" in lower:                   # opening tag omitted by the model
+        i = lower.index("</think>")
+        parts.insert(0, answer[:i].strip())
+        answer = answer[i + len("</think>"):]
+    return "\n\n".join(p for p in parts if p), answer.strip()
 
 
 @dataclass
@@ -222,7 +252,12 @@ class ChatSession:
                     self.context_window = int(resp.get("context_window") or 0)
                 self._emit_token_stats(emit, in_tok, out_tok, elapsed_ms)
 
-                text = _text_of(resp["content"])
+                # History keeps the reply exactly as the model wrote it (some
+                # providers want their reasoning back on the next call); only
+                # what the user sees and what the brain records is split.
+                reasoning, text = split_reasoning(_text_of(resp["content"]))
+                if reasoning:
+                    emit({"type": "reasoning", "text": reasoning})
                 tool_uses = [b for b in resp["content"] if b.get("type") == "tool_use"]
                 if not tool_uses:
                     # Final answer from the model (or empty content).
