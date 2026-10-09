@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- The app version this page was built with; tools/bump_version.py keeps it in step. -->
-<meta name="dariusai-version" content="0.98.0a0">
+<meta name="dariusai-version" content="0.99.0a0">
 <title>DariusAI</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="stylesheet" href="/vendor/codemirror/codemirror.min.css">
@@ -1783,7 +1783,14 @@
     var canvas = document.createElement("canvas");
     container.appendChild(canvas);
     var ctx = canvas.getContext("2d");
-    var W = 0, H = 0, DPR = Math.max(1, window.devicePixelRatio || 1);
+    var W = 0, H = 0;
+    // Pixel ratio, capped: a 4K laptop at 250% scaling would otherwise fill
+    // 6x the pixels of the panel's CSS size on every frame. Lite mode draws
+    // at 1x.
+    function pixelRatio() {
+      return Math.min(quality() === "lite" ? 1 : 1.5, Math.max(1, window.devicePixelRatio || 1));
+    }
+    var DPR = 1;
 
     // Neural-view preferences: which 3D-scene toggles are on. Persisted in
     // localStorage so the choices survive a reload. Defaults to "all on" so
@@ -1792,15 +1799,24 @@
     function loadNeuralPrefs() {
       try {
         var raw = localStorage.getItem(NEURAL_PREFS_KEY);
-        if (!raw) return { showLabels: true, showAnimations: true };
+        if (!raw) return { showLabels: true, showAnimations: true, quality: "auto" };
         var p = JSON.parse(raw);
-        return { showLabels: p.showLabels !== false, showAnimations: p.showAnimations !== false };
-      } catch (e) { return { showLabels: true, showAnimations: true }; }
+        return { showLabels: p.showLabels !== false, showAnimations: p.showAnimations !== false,
+                 quality: /^(auto|full|lite)$/.test(p.quality) ? p.quality : "auto" };
+      } catch (e) { return { showLabels: true, showAnimations: true, quality: "auto" }; }
     }
     function saveNeuralPrefs() {
       try { localStorage.setItem(NEURAL_PREFS_KEY, JSON.stringify(neuralPrefs)); } catch (e) {}
     }
     var neuralPrefs = loadNeuralPrefs();
+    // Rendering quality. "auto" starts full and drops to lite on its own if
+    // frames get expensive (see adaptQuality); "full"/"lite" are pinned by
+    // the user in Layout Options.
+    var autoLite = false;
+    function quality() {
+      if (neuralPrefs.quality === "full" || neuralPrefs.quality === "lite") return neuralPrefs.quality;
+      return autoLite ? "lite" : "full";
+    }
 
     var hud = document.createElement("div");
     hud.className = "hud";
@@ -1832,9 +1848,11 @@
     function resize() {
       var r = container.getBoundingClientRect();
       W = Math.max(1, r.width); H = Math.max(1, r.height);
+      DPR = pixelRatio();
       canvas.width = W * DPR; canvas.height = H * DPR;
       canvas.style.width = W + "px"; canvas.style.height = H + "px";
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      if (typeof kick === "function") kick();
     }
     if (window.ResizeObserver) { new ResizeObserver(resize).observe(container); }
     window.addEventListener("resize", resize);
@@ -1967,112 +1985,137 @@
         return { verts: verts, faces: faces };
       }
 
-    var BRAIN = buildBrainMesh(44, 30);  // ~1300 quads; 60fps measured
+    // Full mesh ~1300 quads; lite ~470.
+    var BRAIN_FULL = buildBrainMesh(44, 30), BRAIN_LITE = buildBrainMesh(26, 18);
 
-    function drawBrain(centre, now, energy) {
-      // Project every vertex through the shared camera, then paint faces
-      // back-to-front. Painter's algorithm is enough here: the mesh is
-      // convex-ish and closed, so there is nothing to interpenetrate.
-      // Two passes per vertex: the rotated position (camera space, which is
-      // where lighting has to happen) and the projected point. Shading off
-      // screen area — my first attempt — has no idea which way a face
-      // points, so the whole thing rendered as a flat disc.
-      var pts = new Array(BRAIN.verts.length);
-      var cam3 = new Array(BRAIN.verts.length);
-      for (var i = 0; i < BRAIN.verts.length; i++) {
-        var v = BRAIN.verts[i];
+    // The mesh is the most expensive thing on screen — project ~1300
+    // vertices, sort ~1300 faces, fill each with its own colour — yet it only
+    // looks different when the camera turns or zooms, or the energy level
+    // changes. So it is painted into an offscreen canvas and stamped; it is
+    // repainted only when one of those actually changes. The electric arcs
+    // on its surface stay live, drawn from the cached vertex positions.
+    var brainCache = { key: "", canvas: document.createElement("canvas"), half: 0, rel: [] };
+
+    function paintBrainMesh(g, mesh, centre, energy) {
+      var n = mesh.verts.length, pts = new Array(n), cam3 = new Array(n);
+      for (var i = 0; i < n; i++) {
+        var v = mesh.verts[i];
         var wx = centre.x + v[0] * BRAIN_RADIUS,
             wy = centre.y + v[1] * BRAIN_RADIUS,
             wz = centre.z + v[2] * BRAIN_RADIUS;
         cam3[i] = rotate(wx - cam.tx, wy - cam.ty, wz - cam.tz);
         pts[i] = project(wx, wy, wz);
       }
-
       var LX = -0.45, LY = -0.78, LZ = -0.44;           // key light, upper-left, toward viewer
       var drawable = [];
-      for (var f = 0; f < BRAIN.faces.length; f++) {
-        var face = BRAIN.faces[f];
+      for (var f = 0; f < mesh.faces.length; f++) {
+        var face = mesh.faces[f];
         var a = pts[face[0]], b = pts[face[1]], c = pts[face[2]], d = pts[face[3]];
         if (!a || !b || !c || !d) continue;
         if ((b.sx - a.sx) * (c.sy - a.sy) - (b.sy - a.sy) * (c.sx - a.sx) <= 0) continue;  // back face
-
         var A = cam3[face[0]], B = cam3[face[1]], C = cam3[face[2]];
         var ux = B[0] - A[0], uy = B[1] - A[1], uz = B[2] - A[2];
         var vx = C[0] - A[0], vy = C[1] - A[1], vz = C[2] - A[2];
         var nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
         var len = Math.hypot(nx, ny, nz) || 1;
         nx /= len; ny /= len; nz /= len;
-
-        var lambert = Math.max(0, nx * LX + ny * LY + nz * LZ);
-        var rim = Math.pow(1 - Math.abs(nz), 2.2);       // glow at the silhouette
-        drawable.push({
-          a: a, b: b, c: c, d: d,
-          depth: (a.depth + b.depth + c.depth + d.depth) / 4,
-          lambert: lambert, rim: rim,
-        });
+        drawable.push({ a: a, b: b, c: c, d: d, depth: (a.depth + b.depth + c.depth + d.depth) / 4,
+                        lambert: Math.max(0, nx * LX + ny * LY + nz * LZ),
+                        rim: Math.pow(1 - Math.abs(nz), 2.2) });   // glow at the silhouette
       }
       drawable.sort(function (p, q) { return q.depth - p.depth; });
-
+      g.strokeStyle = "rgba(38,22,32,0.5)";
+      g.lineWidth = 0.6;
       for (var k = 0; k < drawable.length; k++) {
         var t = drawable[k];
         // Pink-grey: cool grey in shadow warming to rose in the light, with
-        // a violet rim so it separates from the dark background.
+        // a violet rim so it separates from the dark background; energy
+        // tints the whole organ toward electric blue as it works.
         var shade = 0.20 + 0.80 * t.lambert;
-        var rr = Math.round(60 + 175 * shade + 42 * t.rim);
-        var gg = Math.round(48 + 118 * shade + 24 * t.rim);
-        var bb = Math.round(60 + 126 * shade + 66 * t.rim);
-        // energy tints the whole organ toward electric blue as it works
-        if (energy > 0) {
-          rr = Math.round(rr * (1 - 0.18 * energy));
-          gg = Math.round(gg * (1 - 0.05 * energy) + 14 * energy);
-          bb = Math.round(bb * (1 - 0.02 * energy) + 46 * energy);
-        }
-        ctx.fillStyle = "rgb(" + rr + "," + gg + "," + bb + ")";
-        ctx.beginPath();
-        ctx.moveTo(t.a.sx, t.a.sy); ctx.lineTo(t.b.sx, t.b.sy);
-        ctx.lineTo(t.c.sx, t.c.sy); ctx.lineTo(t.d.sx, t.d.sy);
-        ctx.closePath();
-        ctx.fill();
-        // Deep sulci only where the surface turns away — drawing every edge
-        // turned the whole organ to mud at small sizes.
-        if (t.lambert < 0.30) {
-          ctx.strokeStyle = "rgba(38,22,32,0.5)";
-          ctx.lineWidth = 0.6;
-          ctx.stroke();
-        }
+        var rr = 60 + 175 * shade + 42 * t.rim, gg = 48 + 118 * shade + 24 * t.rim, bb = 60 + 126 * shade + 66 * t.rim;
+        if (energy > 0) { rr *= 1 - 0.18 * energy; gg = gg * (1 - 0.05 * energy) + 14 * energy; bb = bb * (1 - 0.02 * energy) + 46 * energy; }
+        g.fillStyle = "rgb(" + (rr | 0) + "," + (gg | 0) + "," + (bb | 0) + ")";
+        g.beginPath();
+        g.moveTo(t.a.sx, t.a.sy); g.lineTo(t.b.sx, t.b.sy);
+        g.lineTo(t.c.sx, t.c.sy); g.lineTo(t.d.sx, t.d.sy);
+        g.closePath();
+        g.fill();
+        if (t.lambert < 0.30) g.stroke();   // deep sulci only where the surface turns away
       }
+      return pts;
+    }
+
+    function drawBrain(centre, now, energy) {
+      var pc = project(centre.x, centre.y, centre.z);
+      if (!pc) return;
+      var lite = quality() === "lite";
+      var key = [cam.yaw.toFixed(3), cam.pitch.toFixed(3), Math.round(pc.scale * 200), Math.round(energy * 10), lite, DPR].join("|");
+      var bc = brainCache;
+      if (key !== bc.key) {
+        bc.key = key;
+        bc.half = Math.ceil(BRAIN_RADIUS * 1.6 * pc.scale) + 4;
+        var px = Math.ceil(bc.half * 2 * DPR);
+        if (bc.canvas.width !== px) { bc.canvas.width = px; bc.canvas.height = px; }
+        var g = bc.canvas.getContext("2d");
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, px, px);
+        // screen coords in, with the brain's centre landing mid-canvas
+        g.setTransform(DPR, 0, 0, DPR, (bc.half - pc.sx) * DPR, (bc.half - pc.sy) * DPR);
+        var pts = paintBrainMesh(g, lite ? BRAIN_LITE : BRAIN_FULL, centre, Math.round(energy * 10) / 10);
+        bc.rel = pts.map(function (q) { return q ? [q.sx - pc.sx, q.sy - pc.sy] : null; });
+      }
+      ctx.drawImage(bc.canvas, pc.sx - bc.half, pc.sy - bc.half, bc.half * 2, bc.half * 2);
 
       // Electricity across the surface, following the mesh as it turns.
       // `energy` is 0 when idle and 1 while the agent is working, so this
-      // reports real activity instead of decorating.
-      if (energy > 0.01) {
-        var arcs = Math.round(2 + energy * 6);
+      // reports real activity instead of decorating. A wide faint pass under
+      // a thin bright one stands in for shadowBlur.
+      if (energy > 0.01 && neuralPrefs.showAnimations) {
+        var rel = bc.rel, arcs = Math.round(2 + energy * (lite ? 3 : 6));
         ctx.lineCap = "round";
         for (var s = 0; s < arcs; s++) {
           var seed = Math.floor(now / 90) * 31 + s * 977;
           var i1 = (seed * 1103515245 + 12345) >>> 0;
           var i2 = (i1 * 1103515245 + 12345) >>> 0;
-          var p1 = pts[i1 % pts.length], p2 = pts[i2 % pts.length];
-          if (!p1 || !p2) continue;
-          if (Math.hypot(p2.sx - p1.sx, p2.sy - p1.sy) > 130) continue;  // keep arcs local
-          ctx.globalAlpha = 0.55 + 0.45 * Math.sin(now / 70 + s);
-          ctx.strokeStyle = s % 3 === 0 ? "#eaf4ff" : "#7dd3fc";
-          ctx.lineWidth = 1.3;
-          ctx.shadowBlur = 10; ctx.shadowColor = "#7dd3fc";
-          drawElectricSegment(p1, p2, ctx.strokeStyle, 1.3, 4);
-          ctx.shadowBlur = 0;
+          var r1 = rel[i1 % rel.length], r2 = rel[i2 % rel.length];
+          if (!r1 || !r2) continue;
+          if (Math.hypot(r2[0] - r1[0], r2[1] - r1[1]) > 130) continue;  // keep arcs local
+          var p1 = { sx: pc.sx + r1[0], sy: pc.sy + r1[1] }, p2 = { sx: pc.sx + r2[0], sy: pc.sy + r2[1] };
+          var a0 = 0.55 + 0.45 * Math.sin(now / 70 + s);
+          ctx.globalAlpha = a0 * 0.35;
+          drawElectricSegment(p1, p2, "#7dd3fc", 4, 4);
+          ctx.globalAlpha = a0;
+          drawElectricSegment(p1, p2, s % 3 === 0 ? "#eaf4ff" : "#7dd3fc", 1.3, 4);
         }
         ctx.globalAlpha = 1;
       }
     }
 
     // ---- starfield ------------------------------------------------------
+    // Drawn as tiny squares in three brightness batches — three fills per
+    // frame instead of 900 separate arc paths. At 1-2 px a square and a
+    // circle are the same thing. Lite mode keeps a third of them.
     var stars = [];
-    for (var si = 0; si < 900; si++) {
+    for (var si = 0; si < 600; si++) {
       var sa = Math.random() * Math.PI * 2, sb = Math.acos(Math.random() * 2 - 1);
       var sr = 2400 + Math.random() * 2000;
       stars.push({ x: sr * Math.sin(sb) * Math.cos(sa), y: sr * Math.sin(sb) * Math.sin(sa), z: sr * Math.cos(sb),
-        r: Math.random() * 1.2 + 0.3, a: Math.random() * 0.6 + 0.2 });
+        r: Math.random() * 1.2 + 0.6, band: si % 3 });
+    }
+    var STAR_ALPHA = [0.25, 0.45, 0.7];
+    function drawStars() {
+      var lite = quality() === "lite";
+      for (var band = 0; band < 3; band++) {
+        ctx.fillStyle = "rgba(223,230,255," + STAR_ALPHA[band] + ")";
+        ctx.beginPath();
+        for (var i = band; i < stars.length; i += 3) {
+          if (lite && i % 9 > 2) continue;
+          var st = stars[i], sp = project(st.x, st.y, st.z);
+          if (!sp || sp.sx < -2 || sp.sx > W + 2 || sp.sy < -2 || sp.sy > H + 2) continue;
+          ctx.rect(sp.sx, sp.sy, st.r, st.r);
+        }
+        ctx.fill();
+      }
     }
 
     var COLORS = {
@@ -2106,11 +2149,29 @@
     }
 
     // ---- physics (3D) ---------------------------------------------------
-    var alpha = 1, ALPHA_DECAY = 0.985, ALPHA_MIN = 0.006;
+    var alpha = 1, ALPHA_DECAY = 0.975, ALPHA_MIN = 0.006;
 
+    // The settled layout is saved, so the next launch starts from it instead
+    // of re-running seconds of O(n^2) physics from random positions.
+    var POS_KEY = "dariusai.neural.positions.v1";
+    function savePositions() {
+      try {
+        var out = {};
+        nodes.forEach(function (n) { out[n.id] = [Math.round(n.x), Math.round(n.y), Math.round(n.z)]; });
+        localStorage.setItem(POS_KEY, JSON.stringify(out));
+      } catch (e) {}
+    }
     function initPositions() {
-      var n = nodes.length, R = Math.max(240, Math.sqrt(n) * 65);
+      var saved = null;
+      try { saved = JSON.parse(localStorage.getItem(POS_KEY) || "null"); } catch (e) {}
+      var n = nodes.length, R = Math.max(240, Math.sqrt(n) * 65), known = 0;
       for (var i = 0; i < n; i++) {
+        var sp = saved && saved[nodes[i].id];
+        if (sp) {
+          nodes[i].x = sp[0]; nodes[i].y = sp[1]; nodes[i].z = sp[2]; known++;
+          nodes[i].vx = 0; nodes[i].vy = 0; nodes[i].vz = 0; nodes[i].fx = null; nodes[i].fy = null; nodes[i].fz = null;
+          continue;
+        }
         var a = Math.random() * Math.PI * 2, b = Math.acos(Math.random() * 2 - 1), r = Math.random() * R;
         nodes[i].x = r * Math.sin(b) * Math.cos(a);
         nodes[i].y = r * Math.sin(b) * Math.sin(a);
@@ -2119,6 +2180,8 @@
       }
       var hub = byId.get(COORDINATOR_ID);
       if (hub) { hub.x = 0; hub.y = 0; hub.z = 0; hub.fx = 0; hub.fy = 0; hub.fz = 0; }
+      // mostly known: only a gentle settle for the newcomers
+      if (n && known / n > 0.8) alpha = 0.12;
     }
 
     function tick() {
@@ -2162,6 +2225,7 @@
         nd.x += nd.vx; nd.y += nd.vy; nd.z += nd.vz;
       }
       alpha *= ALPHA_DECAY;
+      if (alpha < ALPHA_MIN) savePositions();   // settled: remember the layout
     }
 
     // ---- live activity: electric pulses + sustained "in use" glow -------
@@ -2184,21 +2248,25 @@
     }
 
     var lastProjected = new Map();
+    // measureText is surprisingly slow when called for every label on every
+    // frame; label text and size change rarely, so remember the widths.
+    var labelWidths = new Map();
+    function labelWidth(font, text) {
+      var key = font + "|" + text, w = labelWidths.get(key);
+      if (w === undefined) {
+        w = ctx.measureText(text).width;
+        if (labelWidths.size > 4000) labelWidths.clear();
+        labelWidths.set(key, w);
+      }
+      return w;
+    }
 
     function draw() {
       ctx.clearRect(0, 0, W, H);
       ctx.fillStyle = "#05060f";
       ctx.fillRect(0, 0, W, H);
 
-      for (var s = 0; s < stars.length; s++) {
-        var st = stars[s];
-        var sp = project(st.x, st.y, st.z);
-        if (!sp || sp.sx < -20 || sp.sx > W + 20 || sp.sy < -20 || sp.sy > H + 20) continue;
-        ctx.globalAlpha = st.a * Math.min(1, sp.scale * 3);
-        ctx.fillStyle = "#dfe6ff";
-        ctx.beginPath(); ctx.arc(sp.sx, sp.sy, st.r, 0, Math.PI * 2); ctx.fill();
-      }
-      ctx.globalAlpha = 1;
+      drawStars();
 
       var hasSearch = !!searchTerm;
       var proj = [];
@@ -2218,6 +2286,7 @@
       // number of surface arcs, so the effect reports real work.
       var activeCount = 0;
       inUseUntil.forEach(function (until) { if (until > now) activeCount++; });
+      lastActiveCount = activeCount;
       var labelQueue = [];
 
       // edges: calm line normally, jagged "electric" flicker while a pulse
@@ -2237,14 +2306,15 @@
         // the whole brain lit at once and the display said nothing about
         // what was being consulted.
         var electrified = (inUseUntil.get(a.id) > now) || (inUseUntil.get(b.id) > now);
-        ctx.globalAlpha = Math.min(1, (pa.scale + pb.scale) * 0.9);
         if (electrified) {
+          ctx.globalAlpha = Math.min(1, (pa.scale + pb.scale) * 0.9);
           drawElectricSegment(pa, pb, "rgba(125,211,252,0.75)", 1.4, 4);
         } else {
-          drawLiveWire(pa, pb, a, b, i, now);
+          queueWire(pa, pb, a, b, i, now);
         }
       }
       ctx.globalAlpha = 1;
+      flushWires();
 
       for (var n2 = 0; n2 < proj.length; n2++) {
         var nd = proj[n2].n, p = proj[n2].p;
@@ -2306,88 +2376,33 @@
           continue;   // the dot/atom treatment below is for skill nodes
         }
 
-        // Halo: stepped alpha rather than a solid-colour centre. The old
-        // gradient started fully opaque over a huge radius, which blew the
-        // central brain out into a white smear that washed out everything
-        // near it.
-        var glowR = isBrain ? r * 2.8 : r * 2.6;
-        var grad = ctx.createRadialGradient(p.sx, p.sy, r * 0.4, p.sx, p.sy, glowR);
-        grad.addColorStop(0, withAlpha(color, isBrain ? 0.55 : 0.45));
-        grad.addColorStop(0.45, withAlpha(color, 0.14));
-        grad.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.fillStyle = grad;
-        ctx.beginPath(); ctx.arc(p.sx, p.sy, glowR, 0, Math.PI * 2); ctx.fill();
+        // Halo + body + hot centre, pre-rendered once per colour and size
+        // (nodeSprite) and stamped here. Building two radial gradients per
+        // node per frame was the single biggest cost on a software-rendered
+        // canvas.
+        var spr = nodeSprite(color), sh = spr._half * r / SPRITE_R;   // one sprite per colour, scaled
+        ctx.drawImage(spr, p.sx - sh, p.sy - sh, sh * 2, sh * 2);
 
-        // Atom: an electron on a tilted orbit around the core. The orbit
-        // ellipse is squashed by a slow sine so it reads as a ring seen in
-        // 3D rather than a flat circle drawn on the screen.
-        // Gated by showAnimations: with animations off, only the static ring
-        // is drawn (no moving electron — the "ball of energy" the user wants
-        // to be able to switch off).
-        if (!dim && neuralPrefs.showAnimations) {
+        // Atom: an electron on a tilted orbit around the core. ctx.ellipse
+        // takes the rotation itself, so no save/translate/rotate per node,
+        // and the electron's glow is a sprite rather than shadowBlur.
+        // Gated by showAnimations (and skipped in lite mode).
+        if (!dim && quality() !== "lite") {
           var orbitR = r * 1.9;
-          var tilt = now / 2600 + hashHue(nd.id) / 57;
-          var squash = 0.28 + 0.24 * (1 + Math.sin(now / 1700 + nd.x * 0.01)) / 2;
-          ctx.save();
-          ctx.translate(p.sx, p.sy);
-          ctx.rotate(tilt);
+          var tilt = neuralPrefs.showAnimations ? now / 2600 + hashHue(nd.id) / 57 : hashHue(nd.id) / 57;
+          var squash = neuralPrefs.showAnimations ? 0.28 + 0.24 * (1 + Math.sin(now / 1700 + nd.x * 0.01)) / 2 : 0.4;
           ctx.globalAlpha = baseAlpha * 0.32;
           ctx.strokeStyle = color; ctx.lineWidth = 1;
-          ctx.beginPath(); ctx.ellipse(0, 0, orbitR, orbitR * squash, 0, 0, Math.PI * 2); ctx.stroke();
-          var ePhase = now / 900 * (isBrain ? 1.6 : 1) + hashHue(nd.id);
-          var ex = Math.cos(ePhase) * orbitR, ey = Math.sin(ePhase) * orbitR * squash;
-          ctx.globalAlpha = baseAlpha * 0.95;
-          ctx.fillStyle = "#eaf4ff";
-          ctx.shadowBlur = 6; ctx.shadowColor = color;
-          ctx.beginPath(); ctx.arc(ex, ey, Math.max(1.2, r * 0.16), 0, Math.PI * 2); ctx.fill();
-          ctx.shadowBlur = 0;
-          ctx.restore();
-          ctx.globalAlpha = baseAlpha;
-        } else if (!dim && !neuralPrefs.showAnimations) {
-          // Static ring, no electron — same orbit radius as the animated
-          // version, just frozen. Anchored at a deterministic phase so the
-          // view doesn't look like it just stopped mid-animation.
-          var sOrbitR = r * 1.9;
-          var sSquash = 0.4;
-          ctx.save();
-          ctx.translate(p.sx, p.sy);
-          ctx.rotate(hashHue(nd.id) / 57);
-          ctx.globalAlpha = baseAlpha * 0.32;
-          ctx.strokeStyle = color; ctx.lineWidth = 1;
-          ctx.beginPath(); ctx.ellipse(0, 0, sOrbitR, sOrbitR * sSquash, 0, 0, Math.PI * 2); ctx.stroke();
-          ctx.restore();
-          ctx.globalAlpha = baseAlpha;
-        }
-
-        // core: coloured body with a hot centre, so it looks lit from within
-        ctx.fillStyle = color;
-        ctx.beginPath(); ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2); ctx.fill();
-        var core = ctx.createRadialGradient(p.sx - r * 0.25, p.sy - r * 0.3, 0, p.sx, p.sy, r);
-        core.addColorStop(0, "rgba(255,255,255,0.85)");
-        core.addColorStop(0.6, "rgba(255,255,255,0.10)");
-        core.addColorStop(1, "rgba(255,255,255,0)");
-        ctx.fillStyle = core;
-        ctx.beginPath(); ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2); ctx.fill();
-
-        if (isBrain) {
-          // inner "neuron" specks orbiting the core — reads as a living brain,
-          // not just a plain sphere; also flickers faster while thinking.
-          // With animations off the specks still render but freeze at a
-          // deterministic phase per slot, so the brain still looks textured.
-          var speckCount = 10;
-          var speed = thinking ? 2.2 : 0.6;
-          for (var sk = 0; sk < speckCount; sk++) {
-            var phase = neuralPrefs.showAnimations
-              ? now / 1000 * speed + sk * (Math.PI * 2 / speckCount)
-              : sk * (Math.PI * 2 / speckCount);
-            var sx3 = Math.cos(phase) * r * 0.55, sy3 = Math.sin(phase * 1.3) * r * 0.4, sz3 = Math.sin(phase) * r * 0.55;
-            var w3 = rotate(sx3, sy3, sz3);
-            var sxp = p.sx + w3[0] * p.scale * 0.5, syp = p.sy + w3[1] * p.scale * 0.5;
-            ctx.globalAlpha = neuralPrefs.showAnimations ? 0.5 + 0.5 * Math.sin(phase * 2) : 0.7;
-            ctx.fillStyle = "#bfe0ff";
-            ctx.beginPath(); ctx.arc(sxp, syp, 1.6, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.ellipse(p.sx, p.sy, orbitR, orbitR * squash, tilt, 0, Math.PI * 2); ctx.stroke();
+          if (neuralPrefs.showAnimations) {
+            var ePhase = now / 900 + hashHue(nd.id);
+            var ox = Math.cos(ePhase) * orbitR, oy = Math.sin(ePhase) * orbitR * squash;
+            var ct = Math.cos(tilt), stt = Math.sin(tilt);
+            var es = electronSprite(color);
+            ctx.globalAlpha = baseAlpha * 0.95;
+            ctx.drawImage(es, p.sx + ox * ct - oy * stt - es._half, p.sy + ox * stt + oy * ct - es._half, es._half * 2, es._half * 2);
           }
-          ctx.globalAlpha = 1;
+          ctx.globalAlpha = baseAlpha;
         }
 
         if (nd === hoverNode || nd === selectedNode) {
@@ -2417,7 +2432,7 @@
           if (neuralPrefs.showLabels || nd === hoverNode || nd === selectedNode) {
             labelQueue.push({
               text: nd.label, x: p.sx, y: p.sy - r - 7,
-              size: 11 * Math.min(1.3, p.scale * 1.1),
+              size: Math.round(22 * Math.min(1.3, p.scale * 1.1)) / 2,   // half-px steps: cacheable widths
               alpha: dim ? 0.15 : 0.85,
               priority: (nd === hoverNode || nd === selectedNode || isBrain) ? 99 : p.scale,
             });
@@ -2431,12 +2446,15 @@
       // pile.
       if (neuralPrefs.showLabels) {
         labelQueue.sort(function (a, b) { return b.priority - a.priority; });
+        // The overlap test is pairwise; past ~80 labels nothing more fits in
+        // the panel anyway, so the rest are not even measured.
+        if (labelQueue.length > 80) labelQueue.length = 80;
         ctx.textAlign = "center";
         var placed = [];
         for (var li = 0; li < labelQueue.length; li++) {
           var lab = labelQueue[li];
           ctx.font = lab.size + "px -apple-system, Segoe UI, system-ui, sans-serif";
-          var halfW = ctx.measureText(lab.text).width / 2 + 3;
+          var halfW = labelWidth(ctx.font, lab.text) / 2 + 3;
           var halfH = lab.size * 0.75;
           // keep the whole label inside the panel — centred text on a node near
           // the edge used to run off and get cut in half
@@ -2500,36 +2518,99 @@
     // whole point of "electricity flowing between the nodes". Speed and
     // phase are derived from the edge index so the charges don't all march
     // in lockstep, which would look mechanical rather than alive.
-    function drawLiveWire(pa, pb, a, b, index, now) {
-      var ca = nodeColor(a), cb = nodeColor(b);
-      var wire = ctx.createLinearGradient(pa.sx, pa.sy, pb.sx, pb.sy);
-      wire.addColorStop(0, withAlpha(ca, 0.30));
-      wire.addColorStop(0.5, "rgba(150,190,255,0.16)");
-      wire.addColorStop(1, withAlpha(cb, 0.30));
-      ctx.strokeStyle = wire;
-      ctx.lineWidth = (a.id === COORDINATOR_ID || b.id === COORDINATOR_ID ? 1.5 : 1.1)
-        * Math.min(1.6, pa.scale + pb.scale);
-      ctx.beginPath(); ctx.moveTo(pa.sx, pa.sy); ctx.lineTo(pb.sx, pb.sy); ctx.stroke();
-
-      // The moving charge along the wire is part of the animations toggle —
-      // skip the sliding dash entirely when animations are off so the wires
-      // sit still. The faint gradient wire above still renders either way.
-      if (!neuralPrefs.showAnimations) return;
-
-      // the charge: a short bright dash sliding along the wire
+    // Wires and the charges running along them, batched: every calm wire of
+    // one colour goes into a single path, stroked once; charges likewise,
+    // with a glow sprite at each head. The old per-edge version built two
+    // linear gradients and a shadowBlur on every edge, every frame.
+    var wireBatch = new Map(), sparkBatch = new Map(), sparkHeads = [];
+    function queueWire(pa, pb, a, b, index, now) {
+      var cb = nodeColor(b);
+      var hub = a.id === COORDINATOR_ID || b.id === COORDINATOR_ID;
+      var key = cb + (hub ? "|h" : "");
+      var path = wireBatch.get(key);
+      if (!path) { path = []; wireBatch.set(key, path); }
+      path.push(pa.sx, pa.sy, pb.sx, pb.sy);
+      if (!neuralPrefs.showAnimations || quality() === "lite") return;
       var speed = 0.16 + (index % 7) * 0.035;
       var head = ((now / 1000) * speed + (index % 13) / 13) % 1;
       var tail = Math.max(0, head - 0.14);
       var hx = pa.sx + (pb.sx - pa.sx) * head, hy = pa.sy + (pb.sy - pa.sy) * head;
       var tx = pa.sx + (pb.sx - pa.sx) * tail, ty = pa.sy + (pb.sy - pa.sy) * tail;
-      var spark = ctx.createLinearGradient(tx, ty, hx, hy);
-      spark.addColorStop(0, "rgba(125,211,252,0)");
-      spark.addColorStop(1, withAlpha(cb, 0.85));
-      ctx.strokeStyle = spark;
-      ctx.lineWidth = 2 * Math.min(1.5, (pa.scale + pb.scale) * 0.7);
-      ctx.shadowBlur = 8; ctx.shadowColor = cb;
-      ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(hx, hy); ctx.stroke();
-      ctx.shadowBlur = 0;
+      var sp = sparkBatch.get(cb);
+      if (!sp) { sp = []; sparkBatch.set(cb, sp); }
+      sp.push(tx, ty, hx, hy);
+      sparkHeads.push(cb, hx, hy);
+    }
+    function flushWires() {
+      ctx.lineCap = "round";
+      wireBatch.forEach(function (pts, key) {
+        var hub = key.slice(-2) === "|h";
+        ctx.strokeStyle = withAlpha(hub ? key.slice(0, -2) : key, 0.24);
+        ctx.lineWidth = hub ? 1.4 : 1;
+        ctx.beginPath();
+        for (var i = 0; i < pts.length; i += 4) { ctx.moveTo(pts[i], pts[i + 1]); ctx.lineTo(pts[i + 2], pts[i + 3]); }
+        ctx.stroke();
+      });
+      sparkBatch.forEach(function (pts, color) {
+        ctx.strokeStyle = withAlpha(color, 0.75);
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        for (var i = 0; i < pts.length; i += 4) { ctx.moveTo(pts[i], pts[i + 1]); ctx.lineTo(pts[i + 2], pts[i + 3]); }
+        ctx.stroke();
+      });
+      for (var h = 0; h < sparkHeads.length; h += 3) {
+        var es = electronSprite(sparkHeads[h]);
+        ctx.drawImage(es, sparkHeads[h + 1] - es._half, sparkHeads[h + 2] - es._half, es._half * 2, es._half * 2);
+      }
+      wireBatch.clear(); sparkBatch.clear(); sparkHeads.length = 0;
+    }
+
+    // ---- sprites: pre-rendered pieces stamped with drawImage -----------
+    // Keyed by colour and size (and the pixel ratio they were drawn at), so
+    // a graph of a few hundred nodes needs a few dozen canvases, built once.
+    var spriteCache = new Map();
+    function makeSprite(key, half, paint) {
+      var c = spriteCache.get(key);
+      if (c) return c;
+      if (spriteCache.size > 800) spriteCache.clear();
+      c = document.createElement("canvas");
+      c.width = c.height = Math.ceil(half * 2 * DPR);
+      var g = c.getContext("2d");
+      g.scale(DPR, DPR);
+      paint(g, half);
+      c._half = half;
+      spriteCache.set(key, c);
+      return c;
+    }
+    // Drawn once per colour at a generous radius, then scaled down by
+    // drawImage — keying sprites by on-screen size made zooming mint new
+    // ones every frame.
+    var SPRITE_R = 16;
+    function nodeSprite(color) {
+      var r = SPRITE_R, glowR = r * 2.6;
+      return makeSprite("n|" + color + "|" + DPR, Math.ceil(glowR) + 1, function (g, m) {
+        var grad = g.createRadialGradient(m, m, r * 0.4, m, m, glowR);
+        grad.addColorStop(0, withAlpha(color, 0.45));
+        grad.addColorStop(0.45, withAlpha(color, 0.14));
+        grad.addColorStop(1, "rgba(0,0,0,0)");
+        g.fillStyle = grad; g.beginPath(); g.arc(m, m, glowR, 0, Math.PI * 2); g.fill();
+        g.fillStyle = color; g.beginPath(); g.arc(m, m, r, 0, Math.PI * 2); g.fill();
+        var core = g.createRadialGradient(m - r * 0.25, m - r * 0.3, 0, m, m, r);
+        core.addColorStop(0, "rgba(255,255,255,0.85)");
+        core.addColorStop(0.6, "rgba(255,255,255,0.10)");
+        core.addColorStop(1, "rgba(255,255,255,0)");
+        g.fillStyle = core; g.beginPath(); g.arc(m, m, r, 0, Math.PI * 2); g.fill();
+      });
+    }
+    function electronSprite(color) {
+      return makeSprite("e|" + color + "|" + DPR, 6, function (g, m) {
+        var glow = g.createRadialGradient(m, m, 0, m, m, m);
+        glow.addColorStop(0, withAlpha(color, 0.9));
+        glow.addColorStop(0.35, withAlpha(color, 0.35));
+        glow.addColorStop(1, "rgba(0,0,0,0)");
+        g.fillStyle = glow; g.fillRect(0, 0, m * 2, m * 2);
+        g.fillStyle = "#eaf4ff"; g.beginPath(); g.arc(m, m, 1.6, 0, Math.PI * 2); g.fill();
+      });
     }
 
     function withAlpha(color, alpha) {
@@ -2592,10 +2673,12 @@
       // fit that sphere into the smaller screen axis, with margin
       var want = Math.min(2400, Math.max(300, (spread * FOCAL) / (Math.min(W, H) * 0.38)));
       var ease = 0.06;
+      var moved = Math.abs(cx - cam.tx) + Math.abs(cy - cam.ty) + Math.abs(cz - cam.tz) + Math.abs(want - cam.dist);
       cam.tx += (cx - cam.tx) * ease;
       cam.ty += (cy - cam.ty) * ease;
       cam.tz += (cz - cam.tz) * ease;
       cam.dist += (want - cam.dist) * ease;
+      cameraMoving = moved > 2;    // settled: stop counting the camera as activity
     }
 
     var rafId = null;
@@ -2618,17 +2701,78 @@
         // every frame triggers layout work we don't need.
         if (now - fpsLastPainted >= 240) {
           fpsLastPainted = now;
-          fpsEl.textContent = Math.round(fps) + " fps";
+          var aim = targetFps(now) || 1;
+          fpsEl.textContent = Math.round(fps) + " fps" + (quality() === "lite" ? " · lite" : "") +
+                              (aim < 60 ? " · idle" : "");
           fpsEl.classList.remove("normal", "high", "low");
-          fpsEl.classList.add(fps >= 58 ? "high" : (fps < 29 ? "low" : "normal"));
+          fpsEl.classList.add(fps >= aim * 0.9 ? "high" : (fps < aim * 0.5 ? "low" : "normal"));
         }
       }
     }
-    function loop() {
-      var t = performance.now();
+    // ---- frame scheduler ----------------------------------------------
+    // The view used to redraw flat out forever, which on a slow PC kept the
+    // main thread ~80% busy and made the whole window lag. Now:
+    //   busy (agent working, pulses, layout settling, you dragging): 60 fps (lite 24)
+    //   idle with animations on: 30 fps; animations off: no frames at all
+    //   panel hidden / off-screen / window minimised: paused
+    // halved in lite mode. kick() wakes it on any event, input or change.
+    var lastFrameAt = 0, onScreen = true, needsRedraw = true, lastInput = 0;
+    var lastActiveCount = 0, cameraMoving = true;
+    function sceneBusy(now) {
+      return thinking || pulses.length > 0 || flashes.size > 0 || alpha >= ALPHA_MIN || lastActiveCount > 0 ||
+             rotating || panning || !!dragNode || cameraMoving || now - lastInput < 1200;
+    }
+    function targetFps(now) {
+      var lite = quality() === "lite";
+      if (sceneBusy(now)) return lite ? 24 : 60;
+      if (!neuralPrefs.showAnimations) return 0;
+      return lite ? 15 : 30;
+    }
+    function renderFrame(now) {
+      var t0 = performance.now();
       tick(); if (autoFrame) frameGraph(); draw();
-      recordFrame(t);
+      adaptQuality(performance.now() - t0);
+      recordFrame(now);
+      needsRedraw = false;
+    }
+    function loop() {
+      rafId = null;
+      if (document.hidden || !onScreen || W < 2 || H < 2) return;    // kick() resumes
+      var now = performance.now(), fps = targetFps(now);
+      if (fps === 0) { if (needsRedraw) renderFrame(now); return; } // nothing moves: draw on demand
+      if (now - lastFrameAt >= 1000 / fps - 3) { lastFrameAt = now; renderFrame(now); }
       rafId = requestAnimationFrame(loop);
+    }
+    function kick() {
+      needsRedraw = true;
+      lastInput = performance.now();
+      if (!rafId) rafId = requestAnimationFrame(loop);
+    }
+    document.addEventListener("visibilitychange", function () { if (!document.hidden) kick(); });
+    if (window.IntersectionObserver) {
+      new IntersectionObserver(function (entries) {
+        onScreen = entries[entries.length - 1].isIntersecting;
+        if (onScreen) kick();
+      }).observe(container);
+    }
+
+    // ---- auto lite ----------------------------------------------------
+    // In "auto", if frames average over 14 ms the view switches itself to
+    // lite (fewer stars, no orbiting electrons or wire charges, a coarser
+    // brain mesh, 1x pixels, half the frame rate) for the rest of the
+    // session, and says so. Full or Lite can be pinned in Layout Options.
+    var costWindow = [];
+    function adaptQuality(ms) {
+      if (neuralPrefs.quality !== "auto" || autoLite) return;
+      costWindow.push(ms);
+      if (costWindow.length < 90) return;
+      var avg = costWindow.reduce(function (a, b) { return a + b; }, 0) / costWindow.length;
+      costWindow.length = 0;
+      if (avg > 14) {
+        autoLite = true;
+        resize();
+        logActivity("lite mode on: this PC was spending " + Math.round(avg) + " ms a frame");
+      }
     }
 
     // ---- interaction: drag rotates, shift/right-drag pans, wheel zooms --
@@ -2649,6 +2793,7 @@
     }
 
     canvas.addEventListener("mousedown", function (ev) {
+      kick();
       autoFrame = false; // the camera is the user's from here on
       lastMouse = [ev.clientX, ev.clientY];
       var n = pickNode(ev.clientX - canvas.getBoundingClientRect().left, ev.clientY - canvas.getBoundingClientRect().top);
@@ -2669,6 +2814,7 @@
       var lx = ev.clientX - rect.left, ly = ev.clientY - rect.top;
       var dx = ev.clientX - lastMouse[0], dy = ev.clientY - lastMouse[1];
       lastMouse = [ev.clientX, ev.clientY];
+      if (dragNode || rotating || panning) kick();
       if (dragNode) {
         var scale = dragNodeDepth / FOCAL;
         var d = invRotate(dx * scale, dy * scale, 0);
@@ -2682,6 +2828,7 @@
         cam.tx -= pd[0]; cam.ty -= pd[1]; cam.tz -= pd[2];
       } else if (lx >= 0 && lx <= W && ly >= 0 && ly <= H) {
         var n = pickNode(lx, ly);
+        if (n !== hoverNode) kick();     // the hover ring has to appear even when idle
         hoverNode = n;
         var tip = document.getElementById("tooltip");
         if (n) {
@@ -2710,6 +2857,7 @@
       if (n) openInspector(n); else closeInspector();
     });
     canvas.addEventListener("wheel", function (ev) {
+      kick();
       ev.preventDefault();
       autoFrame = false;
       var factor = Math.exp(ev.deltaY * 0.0012);
@@ -2810,6 +2958,7 @@
         // Reheating on every 10 s poll kept the O(n²) physics running about
         // 40% of the time on an unchanged graph.
         if (added) alpha = Math.max(alpha, 0.3);
+        kick();
         return graph;
       });
     }
@@ -2975,6 +3124,7 @@
     var replayNeedsRefresh = false;
 
     function handleActivity(data) {
+      kick();
       // History replayed on (re)connect is state, not activity. Animating it
       // flashed fifty stale events at once, and every graph-changing one
       // fetched the whole graph again — up to fifty copies per launch.
@@ -3056,13 +3206,13 @@
     }
 
     document.getElementById("nvSearch") /* placeholder to keep hud id lookups local */;
-    hud.querySelector("#nvSearch").addEventListener("input", function (ev) { searchTerm = ev.target.value.trim().toLowerCase(); });
+    hud.querySelector("#nvSearch").addEventListener("input", function (ev) { searchTerm = ev.target.value.trim().toLowerCase(); kick(); });
 
     function start() {
       initPositions();
       loop();
       connectEvents();
-      setInterval(refreshSoon, 10000);
+      setInterval(refreshSoon, 60000);   // a safety net: graph changes arrive as events
     }
     refreshGraph().then(start).catch(function (err) {
       document.getElementById("nvStats").textContent = "failed to load graph: " + err.message + " — retrying…";
@@ -3075,9 +3225,18 @@
     return {
       resize: resize,
       getShowLabels: function () { return neuralPrefs.showLabels; },
-      setShowLabels: function (v) { neuralPrefs.showLabels = !!v; saveNeuralPrefs(); },
+      setShowLabels: function (v) { neuralPrefs.showLabels = !!v; saveNeuralPrefs(); kick(); },
       getShowAnimations: function () { return neuralPrefs.showAnimations; },
-      setShowAnimations: function (v) { neuralPrefs.showAnimations = !!v; saveNeuralPrefs(); if (!neuralPrefs.showAnimations) pulses.length = 0; },
+      setShowAnimations: function (v) { neuralPrefs.showAnimations = !!v; saveNeuralPrefs(); if (!neuralPrefs.showAnimations) pulses.length = 0; kick(); },
+      // "auto" | "full" | "lite", and what auto has settled on right now
+      getQuality: function () { return neuralPrefs.quality; },
+      getEffectiveQuality: function () { return quality(); },
+      setQuality: function (v) {
+        neuralPrefs.quality = /^(auto|full|lite)$/.test(v) ? v : "auto";
+        if (neuralPrefs.quality !== "auto") autoLite = false;
+        costWindow.length = 0;
+        saveNeuralPrefs(); resize(); kick();
+      },
     };
   }
 
@@ -6105,7 +6264,15 @@
       "<label class='settings-checkbox'>" +
       "<input type='checkbox' id='optShowAnimations'" +
       (window.__neural && window.__neural.getShowAnimations() ? " checked" : "") + "> " +
-      "Show node animations (orbiting electrons, pulses, live wires)</label>";
+      "Show node animations (orbiting electrons, pulses, live wires)</label>" +
+      (function () {
+        var q = window.__neural ? window.__neural.getQuality() : "auto";
+        var eff = window.__neural ? window.__neural.getEffectiveQuality() : "full";
+        function opt(v, label) { return "<option value='" + v + "'" + (q === v ? " selected" : "") + ">" + label + "</option>"; }
+        return "<label class='settings-checkbox' style='gap:8px'>Brain quality " +
+          "<select id='optNeuralQuality'>" + opt("auto", "Auto (lite on slow PCs)") + opt("full", "Full") + opt("lite", "Lite (light on the CPU)") + "</select>" +
+          "<span style='color:#8b93b8;font-size:11.5px'>" + (q === "auto" ? "now: " + eff : "") + "</span></label>";
+      })();
 
     html += "<h4>External Skills</h4>" +
       "<div style='font-size:11.5px;color:#8b93b8;margin-bottom:7px'>" +
@@ -6204,6 +6371,10 @@
     var anims = document.getElementById("optShowAnimations");
     if (anims) anims.addEventListener("change", function () {
       if (window.__neural) window.__neural.setShowAnimations(anims.checked);
+    });
+    var qual = document.getElementById("optNeuralQuality");
+    if (qual) qual.addEventListener("change", function () {
+      if (window.__neural) window.__neural.setQuality(qual.value);
     });
   }
 
