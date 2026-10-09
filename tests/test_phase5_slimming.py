@@ -105,3 +105,20 @@ def test_every_skill_is_reachable_at_any_depth(tmp_path):
     store.set_setting("project_dir", str(tmp_path))
     names = {p.parent.name for p in T._skill_files(store)}
     assert {"vllm", "dspy", "dogfood", "yuanbao"} <= names       # nested and ungrouped ones
+
+
+def test_render_paths_avoid_gpu_flicker_sources():
+    """2026-10-09: squares flickering in the neural view and the Darius bar.
+    The neural canvas, its sprites and brain cache are CPU-backed, and the
+    always-animating robot / brain icon use no CSS filters."""
+    assert 'var CANVAS_OPTS = { willReadFrequently: true };' in PAGE
+    assert PAGE.count('getContext("2d", CANVAS_OPTS)') == 3
+    robot_css = PAGE[PAGE.index("/* ===== Darius — the app's own animated robot"):PAGE.index("/* Darius status bar at the top of the chat")]
+    assert "drop-shadow" not in robot_css and "brightness(" not in robot_css
+
+
+def test_gpu_off_switch():
+    from dariusai.os_integration import apply_webview_gpu_switch
+    env = {"DARIUSAI_DISABLE_GPU": "1"}
+    assert apply_webview_gpu_switch(env) and "--disable-gpu" in env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"]
+    assert not apply_webview_gpu_switch({})

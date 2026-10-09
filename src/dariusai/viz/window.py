@@ -210,8 +210,9 @@ def launch(
     """Start the viz server, wait until it's actually accepting connections,
     then open the floating window pointed at whatever port it actually
     bound (which may not be `port`, if that one was taken)."""
-    from ..os_integration import apply_webview_memory_flags
+    from ..os_integration import apply_webview_memory_flags, apply_webview_gpu_switch
     apply_webview_memory_flags()   # small PCs: WebView2 low-end mode, before the window exists
+    apply_webview_gpu_switch()     # DARIUSAI_DISABLE_GPU=1: software rendering for problem drivers
     import webview  # imported lazily — only needed when actually opening a window
 
     from ..os_integration import set_app_user_model_id

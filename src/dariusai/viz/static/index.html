@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- The app version this page was built with; tools/bump_version.py keeps it in step. -->
-<meta name="dariusai-version" content="0.99.3a0">
+<meta name="dariusai-version" content="0.99.4a0">
 <title>DariusAI</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="stylesheet" href="/vendor/codemirror/codemirror.min.css">
@@ -698,9 +698,9 @@
   .db .db-ear { fill: #2a3260; stroke: #8fb4ff; stroke-width: 1.2; }
   .db .db-visor { fill: #050a18; stroke: rgba(125,211,252,0.35); stroke-width: 1; }
   .db .db-ant { stroke: #8fb4ff; stroke-width: 1.6; stroke-linecap: round; }
-  .db .db-bulb { fill: #6ee7b7; filter: drop-shadow(0 0 2px #6ee7b7); transform-origin: center; animation: db-glow 2.8s ease-in-out infinite; }
-  .db .db-eye { fill: #7dd3fc; filter: drop-shadow(0 0 1.5px #7dd3fc); }
-  .db .db-eye-line { fill: none; stroke: #7dd3fc; stroke-width: 2.2; stroke-linecap: round; filter: drop-shadow(0 0 1.5px #7dd3fc); }
+  .db .db-bulb { fill: #6ee7b7; transform-origin: center; animation: db-glow 2.8s ease-in-out infinite; }
+  .db .db-eye { fill: #7dd3fc; }
+  .db .db-eye-line { fill: none; stroke: #7dd3fc; stroke-width: 2.2; stroke-linecap: round; }
   .db .db-pupil { fill: #050a18; }
   .db .db-mouth { fill: none; stroke: #7dd3fc; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .db .db-mouth-fill { fill: #7dd3fc; stroke: none; }
@@ -711,7 +711,7 @@
   .db .db-hand { fill: #8fb4ff; }
   .db .db-gear { fill: #8b93b8; }
   .db .db-spark { fill: #fde68a; }
-  .db .db-bulbacc { fill: #fde68a; filter: drop-shadow(0 0 3px #fde68a); }
+  .db .db-bulbacc { fill: #fde68a; }
   .db .db-drop { fill: #7dd3fc; }
   .db .db-txt { fill: #c7d2fe; font: 700 9px/1 Consolas, monospace; }
   .db .db-check { fill: #6ee7b7; }
@@ -758,8 +758,8 @@
   .db .e-open, .db .e-down, .db .e-wide { transform-origin: center; animation: db-blink 4.6s infinite; }
   .db[data-mood="thinking"] .db-bulb, .db[data-mood="coding"] .db-bulb, .db[data-mood="running"] .db-bulb,
   .db[data-mood="searching"] .db-bulb, .db[data-mood="reading"] .db-bulb { animation: db-glow 0.6s ease-in-out infinite; }
-  .db[data-mood="error"] .db-bulb { fill: #f87171; filter: drop-shadow(0 0 2px #f87171); animation: db-flicker 0.5s steps(2) infinite; }
-  .db[data-mood="sleeping"] .db-bulb { fill: #3a4478; filter: none; animation: none; }
+  .db[data-mood="error"] .db-bulb { fill: #f87171; animation: db-flicker 0.5s steps(2) infinite; }
+  .db[data-mood="sleeping"] .db-bulb { fill: #3a4478; animation: none; }
   .db .m-o { transform-origin: center; }
   .db[data-mood="talking"] .m-o { animation: db-talk 0.28s ease-in-out infinite alternate; }
   .db .acc-thought circle { animation: db-bubble 1.5s ease-in-out infinite; }
@@ -810,16 +810,15 @@
   .dbrain svg { width: 100%; height: 100%; overflow: visible; }
   .dbrain .br-body { fill: #f4bec9; stroke: #b0607a; stroke-width: 1; opacity: 0.5; transition: opacity 0.3s; }
   .dbrain .br-fold { fill: none; stroke: #b0607a; stroke-width: 1.1; stroke-linecap: round; opacity: 0.6; }
-  .dbrain .br-bolt { fill: #e0f2fe; stroke: #7dd3fc; stroke-width: 0.6; opacity: 0; filter: drop-shadow(0 0 2px #7dd3fc); }
-  .dbrain.zap .br-body, .dbrain.hot .br-body { opacity: 1; filter: drop-shadow(0 0 4px #f4bec9); }
+  .dbrain .br-bolt { fill: #e0f2fe; stroke: #7dd3fc; stroke-width: 0.9; opacity: 0; }
+  .dbrain.zap .br-body, .dbrain.hot .br-body { opacity: 1; fill: #ffd3e0; }
   .dbrain.zap svg { animation: br-flick 0.9s steps(1) 1; }
   .dbrain.zap .br-bolt { animation: br-bolt 0.9s steps(1) 1; }
   .dbrain.hot .br-bolt { animation: br-bolt 0.75s steps(1) infinite; }
   .dbrain.hot .br-bolt:nth-of-type(2) { animation-duration: 0.93s; animation-delay: 0.2s; }
   .dbrain.hot .br-bolt:nth-of-type(3) { animation-duration: 1.17s; animation-delay: 0.45s; }
   .dbrain.hot svg { animation: br-flick 1.3s steps(1) infinite; }
-  @keyframes br-flick { 0% { filter: brightness(1); } 10% { filter: brightness(1.8); } 20% { filter: brightness(0.9); }
-                        35% { filter: brightness(1.6); } 50% { filter: brightness(1); } 70% { filter: brightness(1.4); } }
+  @keyframes br-flick { 0% { opacity: 1; } 10% { opacity: 0.55; } 20% { opacity: 1; } 35% { opacity: 0.7; } 50% { opacity: 1; } 70% { opacity: 0.8; } }
   @keyframes br-bolt { 0%, 30%, 60% { opacity: 0; } 10%, 40% { opacity: 1; } 75% { opacity: 0.7; } }
 
   @media (prefers-reduced-motion: reduce) {
@@ -841,7 +840,7 @@
   .chat-reaction .db { cursor: pointer; opacity: 0.95; }
   .chat-reaction .db:hover { filter: drop-shadow(0 0 6px rgba(125,211,252,0.6)); }
   .chat-thinking-icon .db { margin: -6px -2px -6px -4px; }
-  .chat-welcome .mark .db { filter: drop-shadow(0 0 16px rgba(110,168,255,0.45)); }
+  .chat-welcome .mark .db { background: radial-gradient(closest-side, rgba(110,168,255,0.28), transparent); border-radius: 50%; }   /* a static glow: no filter repainting under the animation */
 
   /* ---- sessions: buttons in the Darius bar, the dropdown, the full list -- */
   .darius-bar { position: relative; }
@@ -1834,7 +1833,11 @@
   function buildNeuralView(container) {
     var canvas = document.createElement("canvas");
     container.appendChild(canvas);
-    var ctx = canvas.getContext("2d");
+    // CPU-backed canvas. The GPU canvas path flickered squares of the panel
+    // on some graphics drivers (reported 2026-10-09); every Phase 3
+    // measurement was made on this CPU path, so it is also the fast one.
+    var CANVAS_OPTS = { willReadFrequently: true };
+    var ctx = canvas.getContext("2d", CANVAS_OPTS);
     var W = 0, H = 0;
     // Pixel ratio, capped: a 4K laptop at 250% scaling would otherwise fill
     // 6x the pixels of the panel's CSS size on every frame. Lite mode draws
@@ -2108,7 +2111,7 @@
         bc.half = Math.ceil(BRAIN_RADIUS * 1.6 * pc.scale) + 4;
         var px = Math.ceil(bc.half * 2 * DPR);
         if (bc.canvas.width !== px) { bc.canvas.width = px; bc.canvas.height = px; }
-        var g = bc.canvas.getContext("2d");
+        var g = bc.canvas.getContext("2d", CANVAS_OPTS);
         g.setTransform(1, 0, 0, 1, 0, 0);
         g.clearRect(0, 0, px, px);
         // screen coords in, with the brain's centre landing mid-canvas
@@ -2752,7 +2755,7 @@
       if (spriteCache.size > 800) spriteCache.clear();
       c = document.createElement("canvas");
       c.width = c.height = Math.ceil(half * 2 * DPR);
-      var g = c.getContext("2d");
+      var g = c.getContext("2d", CANVAS_OPTS);
       g.scale(DPR, DPR);
       paint(g, half);
       c._half = half;

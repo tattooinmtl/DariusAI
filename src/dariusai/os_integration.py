@@ -276,3 +276,16 @@ def apply_webview_memory_flags(env: dict | None = None) -> bool:
     if "--enable-low-end-device-mode" not in current:
         env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = (current + " " + LOW_MEMORY_FLAGS).strip()
     return True
+
+
+def apply_webview_gpu_switch(env: dict | None = None) -> bool:
+    """DARIUSAI_DISABLE_GPU=1 runs the window's WebView2 without GPU
+    acceleration — the escape hatch for graphics drivers that draw
+    flickering squares. Must run before the first webview window."""
+    env = os.environ if env is None else env
+    if env.get("DARIUSAI_DISABLE_GPU", "").strip() != "1":
+        return False
+    current = env.get("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "")
+    if "--disable-gpu" not in current.split():
+        env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = (current + " --disable-gpu").strip()
+    return True
