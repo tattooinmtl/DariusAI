@@ -27,6 +27,14 @@ Options for the script directly:
 ./install.ps1 -Dest D:\apps\darius  # somewhere else
 ./install.ps1 -Branch dev           # a non-main branch
 ./install.ps1 -SkipShortcuts        # no Desktop / Start Menu icons
+./install.ps1 -ZipFile .\DariusAI-main.zip   # from a downloaded zip
+./install.ps1 -Dev                  # also install pytest
+```
+
+`irm | iex` can't pass options. To use them without saving the script:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/tattooinmtl/DariusAI/main/install.ps1))) -Dest D:\apps\darius
 ```
 
 Manual equivalent, from a checkout:

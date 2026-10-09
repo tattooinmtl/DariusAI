@@ -1,4 +1,4 @@
-# DariusAI installer — the one canonical install/update path.
+# DariusAI installer - the one canonical install/update path.
 #
 # Public one-liner (fresh machine, no clone required):
 #
@@ -6,7 +6,7 @@
 #
 # Downloads the branch as a zip from GitHub, syncs files into place with
 # robocopy (never touches .env, .venv, or the brain), then builds the venv
-# and imports skills. No `git clone` — that path fails on a non-empty
+# and imports skills. No `git clone` - that path fails on a non-empty
 # destination folder and produced the "install silently closed my PowerShell
 # window with only .venv left behind" bug. Zip mode has no such requirement.
 #
@@ -14,17 +14,23 @@
 #
 #   .\install.ps1              # sync latest files in, keep user data
 #   .\install.ps1 -Force       # resync even if version already matches
+#   .\install.ps1 -ZipFile D:\DariusAI-main.zip   # offline: install from a downloaded zip
+#   .\install.ps1 -Dev         # also install the test tools (pytest)
+#
+# Options with the one-liner (irm | iex cannot take parameters):
+#
+#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/tattooinmtl/DariusAI/main/install.ps1))) -Dest D:\apps\DariusAI
 #
 # Modes:
 #   auto (default)   pick zip. .git in the tree does NOT auto-switch modes
 #                    because the whole point is to work without git.
 #   zip              download the branch archive from GitHub, robocopy files
 #
-# Version comes from version_lock.json on the branch — same file the website
+# Version comes from version_lock.json on the branch - same file the website
 # badge fetches. Push a bump, both the app and the site update from one source.
 #
 # Safe to re-run. It never overwrites .env, .venv, the brain, or any local
-# state: no secret is ever downloaded, generated or required — only
+# state: no secret is ever downloaded, generated or required - only
 # .env.example is put in place, and only when .env is absent.
 
 [CmdletBinding()]
@@ -36,7 +42,13 @@ param(
     [ValidateSet('auto', 'zip')]
     [string]$Mode = 'auto',
     [switch]$Force,
-    [switch]$SkipShortcuts
+    [switch]$SkipShortcuts,
+    # Install from an archive already on disk (a GitHub "Download ZIP", or
+    # `git archive`) instead of downloading the branch. Offline installs,
+    # and how the installer itself is tested before a push.
+    [string]$ZipFile,
+    # Also install the test tools (pytest). Users don't need them.
+    [switch]$Dev
 )
 
 $ErrorActionPreference = 'Stop'
@@ -95,7 +107,7 @@ function Get-LatestVersion() {
     try {
         return (Invoke-RestMethod -Uri $url -Headers @{ 'User-Agent' = 'dariusai-installer' }).version
     } catch {
-        Fail "Could not fetch version_lock.json from $url — $($_.Exception.Message)"
+        Fail "Could not fetch version_lock.json from $url - $($_.Exception.Message)"
     }
 }
 
@@ -107,19 +119,18 @@ function Get-LocalVersion([string]$Root) {
 
 # Sync latest files in via zip + robocopy. No git needed. Files the user
 # owns are excluded so an update never overwrites the .env or wipes the
-# venv — robocopy runs WITHOUT /MIR, so anything in the destination that
+# venv - robocopy runs WITHOUT /MIR, so anything in the destination that
 # isn't in the source stays.
 function Update-FromZip([string]$Root) {
-    $latest = Get-LatestVersion
     $current = Get-LocalVersion $Root
-    Info "Latest version on $Branch : $latest"
-
-    if ($current -eq $latest -and -not $Force) {
-        Info "Already on $latest — nothing to download. Use -Force to resync anyway."
-        return
+    if (-not $ZipFile) {
+        $latest = Get-LatestVersion
+        Info "Latest version on $Branch : $latest"
+        if ($current -eq $latest -and -not $Force) {
+            Info "Already on $latest - nothing to download. Use -Force to resync anyway."
+            return
+        }
     }
-    if ($current) { Info "Updating $current -> $latest in $Root" }
-    else { Info "Installing $latest to $Root" }
 
     $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('dariusai-install-' + [guid]::NewGuid().ToString('N'))
     $zipPath = Join-Path $tempRoot 'dariusai.zip'
@@ -127,25 +138,39 @@ function Update-FromZip([string]$Root) {
     New-Item -ItemType Directory -Path $extractPath -Force | Out-Null
 
     try {
-        $zipUrl = "https://github.com/$RepoOwner/$RepoName/archive/refs/heads/$Branch.zip"
-        Info "Downloading $zipUrl"
-        Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -Headers @{ 'User-Agent' = 'dariusai-installer' }
+        if ($ZipFile) {
+            if (-not (Test-Path $ZipFile)) { Fail "-ZipFile not found: $ZipFile" }
+            Info "Using local archive $ZipFile"
+            Copy-Item $ZipFile $zipPath
+        } else {
+            $zipUrl = "https://github.com/$RepoOwner/$RepoName/archive/refs/heads/$Branch.zip"
+            Info "Downloading $zipUrl"
+            Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -Headers @{ 'User-Agent' = 'dariusai-installer' }
+        }
 
         Info 'Extracting archive'
         Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
-        $repoFolder = Get-ChildItem -Path $extractPath -Directory | Select-Object -First 1
-        if (-not $repoFolder) { Fail 'archive extracted empty' }
+        # A GitHub zip wraps everything in one <repo>-<branch>/ folder; a
+        # `git archive` zip may not. Use the folder that holds pyproject.toml.
+        $repoFolder = Get-ChildItem -Path $extractPath -Filter 'pyproject.toml' -Recurse -Depth 1 -File |
+            Select-Object -First 1 | ForEach-Object { $_.Directory }
+        if (-not $repoFolder) { Fail 'archive has no pyproject.toml - not a DariusAI archive' }
+
+        if ($ZipFile) { $latest = Get-LocalVersion $repoFolder.FullName }
+        if ($current) { Info "Updating $current -> $latest in $Root" }
+        else { Info "Installing $latest to $Root" }
 
         Info "Syncing files into $Root"
         # robocopy /E copies everything, /R:2 /W:2 caps retries so a locked
         # file doesn't hang the install for minutes. NOT /MIR: destination
-        # files that aren't in source are preserved — this is what keeps
+        # files that aren't in source are preserved - this is what keeps
         # the venv, brain.db and any user notes alive across updates.
         $excludeDirs = @('.git', '.venv', 'venv', '__pycache__', '.pytest_cache', 'node_modules', 'DariusAIWorkbench', '.dariusai-scratch')
         $excludeFiles = @('.env', '.env.local', 'brain.db', 'launch_error.log', 'dariusai-install-error.log')
-        $args = @($repoFolder.FullName, $Root, '/E', '/R:2', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP',
-                  '/XD') + $excludeDirs + @('/XF') + $excludeFiles
-        & robocopy @args | Out-Null
+        # Not `$args`: that is PowerShell's automatic variable.
+        $roboArgs = @($repoFolder.FullName, $Root, '/E', '/R:2', '/W:2', '/NFL', '/NDL', '/NJH', '/NJS', '/NP',
+                      '/XD') + $excludeDirs + @('/XF') + $excludeFiles
+        & robocopy @roboArgs | Out-Null
         # robocopy exit codes 0-7 are success or informational; >=8 is a real error.
         if ($LASTEXITCODE -gt 7) { Fail "robocopy failed with exit code $LASTEXITCODE" }
         Info 'Files synced'
@@ -179,7 +204,10 @@ function Ensure-Python() {
     } else {
         Fail "Python $($MinPython -join '.')+ not found on PATH. Install from https://python.org and re-run."
     }
-    $raw = & $pyExe @pyArgs --version 2>&1 | Select-Object -First 1
+    # Parenthesised so the command finishes before Select-Object runs. Piping
+    # straight into `Select-Object -First 1` stops the pipeline early, kills
+    # py.exe, and leaves $LASTEXITCODE at -1 -- a random 'Could not run Python'.
+    $raw = (& $pyExe @pyArgs --version 2>&1) | Select-Object -First 1
     if ($LASTEXITCODE -ne 0 -or -not $raw) { Fail "Could not run Python via '$pyExe'." }
     if (-not ("$raw" -match 'Python\s+(\d+)\.(\d+)')) { Fail "Could not parse Python version: $raw" }
     $major = [int]$Matches[1]; $minor = [int]$Matches[2]
@@ -193,10 +221,10 @@ function Ensure-Python() {
 function Initialize-Install([string]$Root, [hashtable]$Py) {
     Push-Location $Root
     try {
-        # .env template only — never fabricate real keys.
+        # .env template only - never fabricate real keys.
         if (-not (Test-Path '.env') -and (Test-Path '.env.example')) {
             Copy-Item '.env.example' '.env'
-            Info 'Created .env from .env.example (no keys — fill in if needed)'
+            Info 'Created .env from .env.example (no keys - fill in if needed)'
         }
 
         $venv = Join-Path $Root '.venv'
@@ -209,9 +237,14 @@ function Initialize-Install([string]$Root, [hashtable]$Py) {
             Info 'Virtual environment already present'
         }
 
-        Info 'Installing package and dependencies'
-        & $venvPython -m pip install --quiet --upgrade pip
-        & $venvPython -m pip install --quiet -e "$Root[dev]"
+        Info 'Installing package and dependencies (a few minutes on a first install)'
+        & $venvPython -m pip install --quiet --upgrade pip | Out-Host
+        # Output goes to the screen (Out-Host), not down the pipeline: anything
+        # a command prints inside this function would otherwise become part of
+        # its return value, and the final "installed" line printed all of it.
+        # Runtime dependencies only - the test tools are for contributors.
+        $target = if ($Dev) { "$Root[dev]" } else { $Root }
+        & $venvPython -m pip install --quiet -e $target | Out-Host
         if ($LASTEXITCODE -ne 0) { Fail 'pip install failed. See output above.' }
 
         # Verify by importing, not by trusting pip's exit code.
@@ -221,9 +254,9 @@ function Initialize-Install([string]$Root, [hashtable]$Py) {
 
         Info 'Importing skill library into the brain'
         $addon = Join-Path $Root 'addon'
-        if (-not (Test-Path $addon)) { Fail "addon directory missing at $addon — install incomplete." }
+        if (-not (Test-Path $addon)) { Fail "addon directory missing at $addon - install incomplete." }
         $expected = (Get-ChildItem -Path (Join-Path $addon 'skills') -Filter 'SKILL.md' -Recurse -File).Count
-        & $venvPython -m dariusai.cli import-addon --source $addon
+        & $venvPython -m dariusai.cli import-addon --source $addon | Out-Host
         if ($LASTEXITCODE -ne 0) { Fail 'Skill import failed.' }
         Info "$expected SKILL.md files imported"
 
@@ -231,7 +264,7 @@ function Initialize-Install([string]$Root, [hashtable]$Py) {
             Info 'Skipping shortcuts (-SkipShortcuts)'
         } else {
             Info 'Creating Desktop / Start Menu shortcuts'
-            & $venvPython -m dariusai.cli install-shortcuts
+            & $venvPython -m dariusai.cli install-shortcuts | Out-Host
             if ($LASTEXITCODE -ne 0) { Warn 'shortcut creation failed; the app is still installed.' }
         }
 
@@ -259,10 +292,10 @@ try {
     Write-Host ''
 } catch {
     # Fail() already logged and paused. If we got here from something that
-    # didn't route through Fail(), catch it too — the message would otherwise
+    # didn't route through Fail(), catch it too - the message would otherwise
     # disappear with the auto-closing PowerShell window.
     if (-not $_.Exception.Message.StartsWith('[DariusAI Installer]')) {
-        Fail "install failed — $($_.Exception.Message)"
+        Fail "install failed - $($_.Exception.Message)"
     }
     exit 1
 }
