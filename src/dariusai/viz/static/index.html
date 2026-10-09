@@ -5411,7 +5411,13 @@
         data.models.forEach(function (m) {
           var opt = document.createElement("option");
           opt.value = m.id;
-          opt.textContent = m.label + (m.free === true ? "  · free" : "");
+          var ctx = "";
+          if (m.context) {
+            ctx = m.context >= 1000000
+              ? ("  · " + (m.context / 1000000) + "M ctx")
+              : ("  · " + Math.round(m.context / 1000) + "k ctx");
+          }
+          opt.textContent = m.label + (m.free === true ? "  · free" : "") + ctx;
           if (m.id === chosen) opt.selected = true;
           sel.appendChild(opt);
         });

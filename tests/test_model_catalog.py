@@ -149,7 +149,11 @@ def test_agnes_uses_the_apihub_base_url_and_documented_chat_models():
     assert spec.auth == "bearer"
     # Agnes documents its catalogue instead of serving GET /models.
     assert spec.has_catalogue is False
-    assert spec.fallback_models == ("agnes-2.5-flash", "agnes-2.0-flash")
+    assert spec.fallback_models == ("agnes-2.5-flash", "agnes-2.0-flash", "agnes-1.5-flash")
+    assert spec.rpm == 20
+    assert spec.find("agnes-2.5-flash").context_window == 524_288
+    assert spec.find("agnes-2.5-flash").max_output_tokens == 65_536
+    assert spec.find("agnes-2.0-flash").context_window == 262_144
 
 
 def test_agnes_returns_documented_models_without_any_http_call():
@@ -157,7 +161,10 @@ def test_agnes_returns_documented_models_without_any_http_call():
         raise AssertionError("must not call a /models endpoint Agnes does not have")
 
     got = mc.fetch_models("agnes-ai", api_key="k", http_get=explode)
-    assert [m["id"] for m in got["models"]] == ["agnes-2.5-flash", "agnes-2.0-flash"]
+    assert [m["id"] for m in got["models"]] == [
+        "agnes-2.5-flash", "agnes-2.0-flash", "agnes-1.5-flash",
+    ]
+    assert got["models"][0]["context"] == 524_288
     assert got["source"] == "documented"
 
 
@@ -234,6 +241,11 @@ def test_minimax_preset_matches_the_documented_api():
     assert spec.protocol == "openai"
     assert spec.has_catalogue is False       # no GET /v1/models exists
     assert spec.fallback_models[0] == "MiniMax-M3"
+    assert spec.find("MiniMax-M3").context_window == 1_000_000
+    assert spec.find("MiniMax-M2.7").context_window == 204_800
+    assert spec.find("MiniMax-M3.1-Flash-Preview").context_window == 1_000_000
+    assert spec.rpm is None
+    assert spec.completion_tokens == 16_384
 
 
 def test_minimax_serves_documented_models_without_an_http_call():
@@ -284,3 +296,53 @@ def test_an_empty_base_url_falls_back_to_the_preset_not_openai(tmp_path):
     from dariusai.agent.llm import build_llm
     llm = build_llm(_store_with(tmp_path, "minimax", "", "MiniMax-M3"))
     assert llm.base_url == "https://api.minimax.io/v1"
+    assert llm.context_window == 1_000_000
+    assert llm.max_tokens == 16_384
+
+
+def test_groq_and_xkiro_are_presets_with_their_published_shape():
+    groq = mc.spec_for("groq")
+    assert groq.base_url == "https://api.groq.com/openai/v1"
+    assert groq.has_catalogue is True
+    assert groq.rpm is None  # free table and Developer plan disagree
+    assert groq.find("openai/gpt-oss-120b").context_window == 131_072
+    assert groq.find("openai/gpt-oss-120b").max_output_tokens == 65_536
+
+    xkiro = mc.spec_for("xkiro")
+    assert xkiro.base_url == "https://api.xkiro.com/v1"
+    assert xkiro.has_catalogue is True
+    assert xkiro.request_timeout == 90.0
+    assert xkiro.rpm is None
+
+    assert mc.spec_for("nvidia").rpm == 40
+    assert mc.spec_for("openrouter").rpm == 20
+
+
+def test_a_live_catalogue_context_is_what_the_client_uses(tmp_path):
+    """NVIDIA does not hardcode glm-5.3-flash. Once the catalogue says
+    how big it is, the next client uses that window."""
+    from dariusai.agent.llm import build_llm
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"data": [{
+                "id": "z-ai/glm-5.3-flash",
+                "context_length": 131072,
+                "max_output_tokens": 8192,
+            }]}
+
+    mc.fetch_models("nvidia", api_key="k", http_get=lambda url, headers: Response())
+    llm = build_llm(_store_with(tmp_path, "nvidia", "", "z-ai/glm-5.3-flash"))
+    assert llm.context_window == 131072
+    assert llm.max_tokens == 8192
+    assert llm.rpm == 40
+    assert llm.timeout == 180.0
+
+
+def test_xkiro_client_stops_before_the_blocking_cutoff(tmp_path):
+    from dariusai.agent.llm import build_llm
+    llm = build_llm(_store_with(tmp_path, "xkiro", "", "openai/gpt-5.6-sol"))
+    assert llm.timeout == 90.0
+    assert llm.base_url == "https://api.xkiro.com/v1"

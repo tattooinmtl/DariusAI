@@ -110,6 +110,7 @@ node_modules/
 /COMMAND_TEST.md
 /AGENT_WORKSPACE_CONVENTION.md
 /AGENTS.md
+/optimizationPlan.md
 !/README.md
 
 # --- Editors and OS ---------------------------------------------------------

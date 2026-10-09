@@ -515,6 +515,33 @@ def test_url_updates_active_provider(mock_ctx):
     assert mock_ctx.store.get_active_provider()["base_url"] == "http://localhost:11434"
 
 
+def test_model_and_url_keep_the_stored_key(tmp_path):
+    """The provider record handed to these commands has no plaintext key.
+    Passing that missing field as "" used to wipe the key, so the next
+    request 401'd no matter which provider was active."""
+    from dariusai.brain.store import BrainStore
+
+    store = BrainStore(tmp_path / "brain")
+    store.upsert_provider(
+        "minimax", base_url="https://api.minimax.io/v1",
+        model="MiniMax-M3", api_key="sk-cp-keep",
+    )
+    store.set_active_provider("minimax")
+    ctx = CommandContext(
+        store=store, app_state=MagicMock(), request_id="r", emit_log=lambda ev: None,
+    )
+
+    model_res = REGISTRY["model"].handler(ctx, ["MiniMax-M2.7"])
+    assert model_res.status == "ok"
+    assert store.get_provider("minimax")["model"] == "MiniMax-M2.7"
+    assert store.get_provider_api_key("minimax") == "sk-cp-keep"
+
+    url_res = REGISTRY["url"].handler(ctx, ["https://api.minimax.io/v1"])
+    assert url_res.status == "ok"
+    assert store.get_provider("minimax")["base_url"] == "https://api.minimax.io/v1"
+    assert store.get_provider_api_key("minimax") == "sk-cp-keep"
+
+
 def test_test_provider_rejects_empty_args(mock_ctx):
     spec = REGISTRY["test-provider"]
     res = spec.handler(mock_ctx, [])

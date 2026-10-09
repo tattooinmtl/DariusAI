@@ -32,10 +32,22 @@ a gate.
 from __future__ import annotations
 
 import re
+import threading
+import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
 REQUEST_TIMEOUT = 15.0
+
+
+@dataclass(frozen=True)
+class ModelSpec:
+    """Published per-model numbers. Leave a field empty when the provider
+    does not publish it — a guessed tokens-per-minute is worse than none."""
+
+    id: str
+    context_window: int | None = None
+    max_output_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -46,10 +58,10 @@ class ProviderSpec:
     free_only: bool = False
     extra_headers: dict[str, str] = field(default_factory=dict)
     label: str = ""
-    # Known-good model ids to offer if the catalogue endpoint doesn't answer
+    # Known-good models to offer if the catalogue endpoint doesn't answer
     # (not every gateway exposes /models). Better a working default than a
     # provider that can't be used at all because discovery failed.
-    fallback_models: tuple[str, ...] = ()
+    models: tuple[ModelSpec, ...] = ()
     # The wire protocol, which is what actually decides the client. Only two
     # exist in practice: Anthropic's /v1/messages and OpenAI's
     # /chat/completions. Every gateway in this table but Anthropic is the
@@ -60,6 +72,28 @@ class ProviderSpec:
     # 404 and a confusing error, so it's skipped and the documented ids are
     # served directly.
     has_catalogue: bool = True
+    # Published request cap for this preset's tier. None means the provider
+    # does not publish one number (it varies by plan or by model). The tool
+    # loop spaces calls to stay under it. Tokens-per-minute is not stored:
+    # where a provider publishes it, the figure depends on the plan and a
+    # single hardcoded value would be the wrong plan.
+    rpm: int | None = None
+    # Request budget when the provider publishes no separate max output.
+    # MiniMax counts thinking tokens inside max_tokens, and 4096 comes back
+    # empty. This is the size we ask for, not a published ceiling.
+    completion_tokens: int | None = None
+    # Override the client's wait. xKiro cuts a blocking call off at 95s.
+    request_timeout: float | None = None
+
+    @property
+    def fallback_models(self) -> tuple[str, ...]:
+        return tuple(m.id for m in self.models)
+
+    def find(self, model_id: str) -> ModelSpec | None:
+        for model in self.models:
+            if model.id == model_id:
+                return model
+        return None
 
 
 PROVIDER_SPECS: dict[str, ProviderSpec] = {
@@ -77,12 +111,19 @@ PROVIDER_SPECS: dict[str, ProviderSpec] = {
         label="OpenRouter (free only)",
         # `openrouter/free` is OpenRouter's own router that picks among the
         # free models for you — a safe default if discovery is unavailable.
-        fallback_models=("openrouter/free",),
+        models=(ModelSpec("openrouter/free"),),
+        # :free models, openrouter.ai/docs/api-reference/limits. 20/min
+        # either way. The daily cap is 50 or 1,000 depending on whether the
+        # account has bought 10 credits, so it is not paced here.
+        rpm=20,
     ),
     "nvidia": ProviderSpec(
         base_url="https://integrate.api.nvidia.com/v1",
         free_only=True,
         label="NVIDIA NIM (free only)",
+        # Published free-tier cap. NVIDIA says the live number moves with
+        # the model and with other people's traffic. No TPM is published.
+        rpm=40,
     ),
     # Agnes-AI and OpenCode both front OpenAI-shaped gateways. If either
     # moves, the provider still works — type the right base URL in Settings
@@ -97,12 +138,23 @@ PROVIDER_SPECS: dict[str, ProviderSpec] = {
         base_url="https://api.minimax.io/v1",
         label="MiniMax",
         has_catalogue=False,
-        fallback_models=(
-            "MiniMax-M3",
-            "MiniMax-M2.7", "MiniMax-M2.7-highspeed",
-            "MiniMax-M2.5", "MiniMax-M2.5-highspeed",
-            "MiniMax-M2.1", "MiniMax-M2.1-highspeed",
-            "MiniMax-M2",
+        # platform.minimax.io API overview. The window is input + output
+        # together. No tokens-per-minute figure; Token Plan quota is a
+        # 5-hour window plus a weekly window. M3.1-Flash-Preview is Token
+        # Plan / MiniMax Code only. completion_tokens is the size we ask
+        # for: MiniMax counts thinking inside max_tokens, and 4096 returns
+        # an empty answer. It is not a published output ceiling.
+        completion_tokens=16_384,
+        models=(
+            ModelSpec("MiniMax-M3", context_window=1_000_000),
+            ModelSpec("MiniMax-M3.1-Flash-Preview", context_window=1_000_000),
+            ModelSpec("MiniMax-M2.7", context_window=204_800),
+            ModelSpec("MiniMax-M2.7-highspeed", context_window=204_800),
+            ModelSpec("MiniMax-M2.5", context_window=204_800),
+            ModelSpec("MiniMax-M2.5-highspeed", context_window=204_800),
+            ModelSpec("MiniMax-M2.1", context_window=204_800),
+            ModelSpec("MiniMax-M2.1-highspeed", context_window=204_800),
+            ModelSpec("MiniMax-M2", context_window=204_800),
         ),
     ),
     "agnes-ai": ProviderSpec(
@@ -110,16 +162,45 @@ PROVIDER_SPECS: dict[str, ProviderSpec] = {
         free_only=True,
         label="Agnes-AI (free only)",
         has_catalogue=False,  # documented model list, no /models endpoint
-        # The chat-capable ids from Agnes's published catalogue. The image
-        # (agnes-image-*) and video (agnes-video-*) models are deliberately
-        # not here: this field feeds the agent's chat model, and picking a
-        # video model for it would fail at the first request.
-        fallback_models=("agnes-2.5-flash", "agnes-2.0-flash"),
+        # Agnes MODEL_CATALOG rev 2026.07.30. "512K" / "256K" / "64K" are
+        # 1024-based; "65.5K" is 65,536 written in decimal thousands.
+        # Text RPM on the free plan is 20 actual (enterprise 40, Token
+        # Plan 1,000). This preset is the free plan, so the pace is 20.
+        # Image and video models are not listed: this feeds the chat model.
+        rpm=20,
+        models=(
+            ModelSpec("agnes-2.5-flash", context_window=524_288, max_output_tokens=65_536),
+            ModelSpec("agnes-2.0-flash", context_window=262_144, max_output_tokens=65_536),
+            ModelSpec("agnes-1.5-flash", context_window=262_144, max_output_tokens=65_536),
+        ),
     ),
     "opencode": ProviderSpec(
         base_url="https://opencode.ai/zen/v1",
         free_only=True,
         label="OpenCode (free only)",
+    ),
+    # Groq publishes per-model context and max completion on its models
+    # page. RPM/TPM differ between the free rate-limits table and the
+    # Developer-plan column, so neither is hardcoded. The live /models
+    # list wins when a key is saved; these ids are the fallback.
+    "groq": ProviderSpec(
+        base_url="https://api.groq.com/openai/v1",
+        label="Groq",
+        models=(
+            ModelSpec("llama-3.3-70b-versatile", context_window=131_072, max_output_tokens=32_768),
+            ModelSpec("llama-3.1-8b-instant", context_window=131_072, max_output_tokens=131_072),
+            ModelSpec("openai/gpt-oss-120b", context_window=131_072, max_output_tokens=65_536),
+            ModelSpec("openai/gpt-oss-20b", context_window=131_072, max_output_tokens=65_536),
+            ModelSpec("qwen/qwen3.8-27b", context_window=131_072, max_output_tokens=16_384),
+        ),
+    ),
+    # Public catalogue at GET /v1/models carries context_length,
+    # max_output_tokens and tool support. Chat RPM is per plan and is not
+    # one number. A blocking call is cut off at 95 seconds.
+    "xkiro": ProviderSpec(
+        base_url="https://api.xkiro.com/v1",
+        label="xKiro",
+        request_timeout=90.0,
     ),
 }
 
@@ -134,9 +215,82 @@ def presets() -> list[dict[str, Any]]:
     """What the Settings panel offers in its provider dropdown."""
     return [
         {"name": name, "label": s.label or name, "base_url": s.base_url,
-         "free_only": s.free_only, "protocol": s.protocol}
+         "free_only": s.free_only, "protocol": s.protocol, "rpm": s.rpm}
         for name, s in PROVIDER_SPECS.items()
     ]
+
+
+# Filled when a catalogue (live or documented) is read, so a later
+# build_llm can use context the static table does not know — NVIDIA and
+# xKiro publish it per model on the wire, not in this file.
+_catalogue_limits: dict[tuple[str, str], dict[str, Any]] = {}
+
+
+def remember_models(name: str, models: list[dict[str, Any]]) -> None:
+    key = (name or "").strip().lower()
+    for model in models:
+        model_id = model.get("id")
+        if not model_id:
+            continue
+        _catalogue_limits[(key, str(model_id))] = {
+            "context": model.get("context"),
+            "max_output": model.get("max_output"),
+        }
+
+
+@dataclass(frozen=True)
+class CallLimits:
+    context_window: int | None = None
+    max_output_tokens: int | None = None
+    rpm: int | None = None
+    timeout: float | None = None
+    completion_tokens: int | None = None
+
+
+def limits_for(name: str, model_id: str) -> CallLimits:
+    """Context, output budget and request pace for one saved model.
+
+    Static numbers win when we have them. A catalogue entry fills the
+    gaps. Anything still empty stays empty so the caller can use its
+    own default instead of a made-up figure.
+    """
+    spec = spec_for(name)
+    found = spec.find(model_id)
+    seen = _catalogue_limits.get(((name or "").strip().lower(), model_id or ""), {})
+    context = (found.context_window if found else None) or seen.get("context")
+    max_output = (found.max_output_tokens if found else None) or seen.get("max_output")
+    return CallLimits(
+        context_window=context,
+        max_output_tokens=max_output,
+        rpm=spec.rpm,
+        timeout=spec.request_timeout,
+        completion_tokens=spec.completion_tokens,
+    )
+
+
+class RequestPace:
+    """Space calls so a 60-step tool turn does not spend a per-minute cap
+    in the first second. One gate per provider name, shared by every
+    client built for it."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._next: dict[str, float] = {}
+
+    def wait(self, key: str, rpm: int | None, sleep: Callable[[float], None], now: Callable[[], float]) -> None:
+        if not rpm or rpm <= 0 or not key:
+            return
+        interval = 60.0 / rpm
+        with self._lock:
+            current = now()
+            ready = self._next.get(key, current)
+            delay = max(0.0, ready - current)
+            self._next[key] = max(ready, current) + interval
+        if delay > 0:
+            sleep(delay)
+
+
+PACE = RequestPace()
 
 
 def _zero(value: Any) -> bool:
@@ -184,6 +338,7 @@ def _normalize(entry: Any) -> dict[str, Any] | None:
         "label": str(entry.get("display_name") or entry.get("name") or model_id),
         "free": is_free(entry),
         "context": entry.get("context_length") or entry.get("context_window"),
+        "max_output": entry.get("max_output_tokens") or entry.get("max_completion_tokens"),
     }
 
 
@@ -264,17 +419,26 @@ def fallback_result(name: str, reason: str = "") -> dict[str, Any]:
     unavailable. Empty `models` when nothing is known, which the UI reports
     honestly rather than pretending to have a list."""
     spec = spec_for(name)
+    models = [
+        {
+            "id": model.id,
+            "label": model.id,
+            "free": True if spec.free_only else None,
+            "context": model.context_window,
+            "max_output": model.max_output_tokens,
+        }
+        for model in spec.models
+    ]
+    remember_models(name, models)
     return {
-        "models": [
-            {"id": model_id, "label": model_id, "free": True if spec.free_only else None, "context": None}
-            for model_id in spec.fallback_models
-        ],
+        "models": models,
         "free_only": spec.free_only,
         "free_filter": "off",
-        "total": len(spec.fallback_models),
+        "total": len(models),
         "url": "",
         "source": "documented",
         "note": reason,
+        "rpm": spec.rpm,
     }
 
 
@@ -319,6 +483,7 @@ def fetch_models(
             free_filter = "unverifiable"  # no pricing disclosed — show all, flagged
 
     models.sort(key=lambda m: m["id"])
+    remember_models(name, models)
     return {
         "models": models,
         "free_only": spec.free_only,
@@ -327,4 +492,5 @@ def fetch_models(
         "url": url,
         "source": "live",
         "note": "",
+        "rpm": spec.rpm,
     }

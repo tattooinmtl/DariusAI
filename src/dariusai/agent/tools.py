@@ -652,7 +652,7 @@ def build_tool_registry(store: BrainStore, sandbox: Sandbox | None = None, on_ev
     _register(reg, store, ToolSpec(
         name="web_research",
         description=(
-            "Search the web and fetch page text for a topic you don't already know how to handle. "
+            "Search the web with DuckDuckGo and the private SearXNG gateway, then fetch page text. "
             "Use this BEFORE learn_skill — read what it returns, then cite the sources you actually used."
         ),
         input_schema={

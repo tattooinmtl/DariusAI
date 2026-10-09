@@ -61,3 +61,80 @@ def test_activate_unknown_provider_404(tmp_path):
     _, client = make_client(tmp_path)
     r = client.put("/api/providers/does-not-exist/activate")
     assert r.status_code == 404
+
+
+class _LiveChat:
+    """Stand-in for an open ChatSession. Only `.llm` is what Settings swaps."""
+
+    def __init__(self, llm):
+        self.llm = llm
+
+
+def test_activate_swaps_the_open_chat_client(tmp_path):
+    """Use this must change the client the open chat will call next.
+    Writing the database alone leaves the panel on the previous key."""
+    _, client = make_client(tmp_path)
+    app = client.app
+    stale = _LiveChat(llm="stale")
+    app.state.chat_sessions.append(stale)
+
+    client.put("/api/providers/minimax", json={
+        "base_url": "https://api.minimax.io/v1",
+        "model": "MiniMax-M3",
+        "api_key": "sk-cp-live",
+    })
+    r = client.put("/api/providers/minimax/activate")
+    assert r.status_code == 200
+
+    assert stale.llm is app.state.llm
+    assert stale.llm.api_key == "sk-cp-live"
+    assert stale.llm.model == "MiniMax-M3"
+    assert stale.llm.base_url == "https://api.minimax.io/v1"
+
+
+def test_saving_the_active_provider_swaps_the_open_chat_client(tmp_path):
+    _, client = make_client(tmp_path)
+    app = client.app
+    stale = _LiveChat(llm="stale")
+    app.state.chat_sessions.append(stale)
+
+    client.put("/api/providers/nvidia", json={
+        "base_url": "https://integrate.api.nvidia.com/v1",
+        "model": "old-model",
+        "api_key": "nv-old",
+    })
+    client.put("/api/providers/nvidia/activate")
+    previous = stale.llm
+
+    r = client.put("/api/providers/nvidia", json={
+        "base_url": "https://integrate.api.nvidia.com/v1",
+        "model": "z-ai/glm-5.3-flash",
+        "api_key": "nv-new",
+    })
+    assert r.status_code == 200
+    assert stale.llm is not previous
+    assert stale.llm.api_key == "nv-new"
+    assert stale.llm.model == "z-ai/glm-5.3-flash"
+
+
+def test_saving_an_inactive_provider_leaves_the_open_chat_client(tmp_path):
+    _, client = make_client(tmp_path)
+    app = client.app
+    stale = _LiveChat(llm="stale")
+    app.state.chat_sessions.append(stale)
+
+    client.put("/api/providers/minimax", json={
+        "base_url": "https://api.minimax.io/v1",
+        "model": "MiniMax-M3",
+        "api_key": "sk-cp-live",
+    })
+    client.put("/api/providers/minimax/activate")
+    current = stale.llm
+
+    r = client.put("/api/providers/nvidia", json={
+        "base_url": "https://integrate.api.nvidia.com/v1",
+        "model": "z-ai/glm-5.3-flash",
+        "api_key": "nv-other",
+    })
+    assert r.status_code == 200
+    assert stale.llm is current

@@ -30,9 +30,10 @@ dependency bought for nothing.
 from __future__ import annotations
 
 import json
-from typing import Any
+import time
+from typing import Any, Callable
 
-from .model_catalog import normalize_base_url
+from .model_catalog import PACE, normalize_base_url
 
 DEFAULT_TIMEOUT = 180.0
 DEFAULT_MAX_TOKENS = 4096
@@ -82,6 +83,10 @@ class OpenAILLM:
         timeout: float = DEFAULT_TIMEOUT,
         transport: Any | None = None,
         context_window: int = DEFAULT_CONTEXT_WINDOW,
+        rpm: int | None = None,
+        pace_key: str = "",
+        sleeper: Callable[[float], None] | None = None,
+        clock: Callable[[], float] | None = None,
     ):
         if not model:
             raise ValueError(
@@ -95,6 +100,10 @@ class OpenAILLM:
         self.max_tokens = max_tokens
         self.timeout = timeout
         self.context_window = context_window
+        self.rpm = rpm
+        self.pace_key = pace_key
+        self._sleep = sleeper or time.sleep
+        self._now = clock or time.monotonic
         self._transport = transport  # injected in tests; None means real httpx
 
     # -- outbound translation ----------------------------------------------
@@ -217,13 +226,15 @@ class OpenAILLM:
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
-        if self._transport is not None:
-            response = self._transport(url, headers, body)
-        else:
-            import httpx
-            response = httpx.post(url, headers=headers, json=body, timeout=self.timeout)
-
+        PACE.wait(self.pace_key, self.rpm, self._sleep, self._now)
+        response = self._post(url, headers, body)
         status = getattr(response, "status_code", 200)
+        if status == 429:
+            # One wait, then one retry. Retry-After is the provider's own
+            # number. Capped so a tool turn cannot stall for minutes.
+            self._sleep(self._retry_after(response))
+            response = self._post(url, headers, body)
+            status = getattr(response, "status_code", 200)
         if status >= 400:
             detail = ""
             try:
@@ -256,3 +267,17 @@ class OpenAILLM:
         result["usage"] = usage
         result["context_window"] = self.context_window
         return result
+
+    def _post(self, url: str, headers: dict[str, str], body: dict[str, Any]) -> Any:
+        if self._transport is not None:
+            return self._transport(url, headers, body)
+        import httpx
+        return httpx.post(url, headers=headers, json=body, timeout=self.timeout)
+
+    def _retry_after(self, response: Any) -> float:
+        raw = getattr(response, "headers", {}) or {}
+        try:
+            wait = float(raw.get("retry-after") or raw.get("Retry-After") or 1)
+        except (TypeError, ValueError):
+            wait = 1.0
+        return min(max(wait, 0.0), 20.0)

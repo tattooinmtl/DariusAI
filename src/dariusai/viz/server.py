@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -326,6 +327,25 @@ def _skill_to_json(skill: Skill) -> dict[str, Any]:
     }
 
 
+def install_live_llm(app: FastAPI, store: BrainStore) -> Any:
+    """Rebuild the client for the active provider and point every open chat at it.
+
+    `app.state.llm` is only read when a socket connects. The socket then
+    keeps that object for its whole life, so saving a key or clicking
+    "Use this" used to update the database while the open panel kept
+    sending the previous key — one 401, repeated for every provider.
+    """
+    from ..agent.llm import build_llm
+
+    new_llm = build_llm(store)
+    app.state.llm = new_llm
+    with app.state.chat_sessions_lock:
+        sessions = list(app.state.chat_sessions)
+    for session in sessions:
+        session.llm = new_llm
+    return new_llm
+
+
 def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any | None = None) -> FastAPI:
     """`llm` lets callers (tests, or an embedding process that already built
     one) inject an LLM for /ws/chat instead of the endpoint lazily
@@ -349,6 +369,10 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
     app.state.project_dir = resolved_project_dir
     store.set_setting("project_dir", str(app.state.project_dir))
     app.state.llm = llm
+    # Open /ws/chat sessions. Settings and /provider swap `.llm` on each
+    # one; the lock covers the HTTP thread that does the swap.
+    app.state.chat_sessions = []
+    app.state.chat_sessions_lock = threading.Lock()
     # Stamped once so the terminal's `--info` can report how long this
     # process has been up — which is also how you spot an app still running
     # an older build.
@@ -478,7 +502,19 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
     def upsert_provider(name: str, body: ProviderIn):
         # Never returns the plaintext key — upsert_provider's result is
         # already masked (BrainStore._provider_row_to_dict).
-        return store.upsert_provider(name, base_url=body.base_url, model=body.model, api_key=body.api_key)
+        saved = store.upsert_provider(name, base_url=body.base_url, model=body.model, api_key=body.api_key)
+        # A non-active row can be edited without touching the chat that is
+        # already talking to someone else. The active row is that chat.
+        active = store.get_active_provider()
+        if active and active["name"] == name:
+            try:
+                install_live_llm(app, store)
+            except Exception:
+                # The key is already stored. A client that cannot be built
+                # yet (no model picked) must not turn a successful save
+                # into an error that makes the user paste the key again.
+                pass
+        return saved
 
     @app.delete("/api/providers/{name}")
     def delete_provider(name: str):
@@ -491,6 +527,10 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
             store.set_active_provider(name)
         except KeyError as exc:
             raise HTTPException(404, str(exc)) from exc
+        try:
+            install_live_llm(app, store)
+        except Exception:
+            pass
         return store.get_provider(name)
 
     @app.get("/api/start-with-windows")
@@ -550,15 +590,26 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
             raise HTTPException(404, f"no provider named {name!r}")
         api_key = store.get_provider_api_key(name) if provider["has_api_key"] else ""
         try:
-            return fetch_models(name, base_url=provider["base_url"], api_key=api_key)
+            result = fetch_models(name, base_url=provider["base_url"], api_key=api_key)
         except Exception as exc:  # network down, bad key, no /models, provider outage
             # A provider with documented model ids stays usable even when its
             # catalogue can't be reached — falling back beats a dead end.
             if spec_for(name).fallback_models:
-                return fallback_result(name, reason=str(exc))
-            if isinstance(exc, ValueError):
+                result = fallback_result(name, reason=str(exc))
+            elif isinstance(exc, ValueError):
                 raise HTTPException(400, str(exc)) from exc
-            raise HTTPException(502, f"could not reach {name}: {exc}") from exc
+            else:
+                raise HTTPException(502, f"could not reach {name}: {exc}") from exc
+        # The list just learned each model's context. If this is the
+        # provider the open chat is using, rebuild so the next message
+        # compacts against that window instead of the 128k default.
+        active = store.get_active_provider()
+        if active and active["name"] == name:
+            try:
+                install_live_llm(app, store)
+            except Exception:
+                pass
+        return result
 
     @app.post("/api/shortcuts")
     def post_shortcuts():
@@ -942,6 +993,8 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
             except Exception:
                 await user_msg_queue.put(None)
 
+        with app.state.chat_sessions_lock:
+            app.state.chat_sessions.append(session)
         dispatcher_task = asyncio.create_task(_dispatch_incoming())
         try:
             while True:
@@ -1043,9 +1096,7 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
                     # its own UI (model badge, etc.).
                     if side_effect.get("reload_llm"):
                         try:
-                            from ..agent.llm import build_llm
-                            new_llm = build_llm(store)
-                            app.state.llm = new_llm
+                            install_live_llm(app, store)
                             await ws.send_json({
                                 "type": "llm_reloaded",
                                 "request_id": cmd_req_id,
@@ -1102,6 +1153,9 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
         except WebSocketDisconnect:
             pass
         finally:
+            with app.state.chat_sessions_lock:
+                if session in app.state.chat_sessions:
+                    app.state.chat_sessions.remove(session)
             dispatcher_task.cancel()
             # Any tool thread still parked on a permission future must be
             # released, or session.send() will hang the executor forever

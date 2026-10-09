@@ -659,8 +659,10 @@ def _cmd_model(ctx: CommandContext, args: list) -> CommandResult:
         return _err("No active provider. Use /provider <name> first.")
     name = active.get("name")
     try:
+        # get_active_provider does not carry the plaintext key. None keeps
+        # the stored one; "" would erase it and the next call would 401.
         ctx.store.upsert_provider(name, base_url=active.get("base_url", ""),
-                                model=args[0], api_key=active.get("api_key", ""))
+                                model=args[0], api_key=None)
     except Exception as exc:
         return _err(f"upsert_provider failed: {exc}")
     return _ok(
@@ -711,9 +713,10 @@ def _cmd_url(ctx: CommandContext, args: list) -> CommandResult:
     if not active:
         return _err("No active provider.")
     try:
+        # api_key=None keeps the stored key. See _cmd_model.
         ctx.store.upsert_provider(
             active.get("name"), base_url=args[0],
-            model=active.get("model", ""), api_key=active.get("api_key", ""),
+            model=active.get("model", ""), api_key=None,
         )
     except Exception as exc:
         return _err(f"upsert_provider failed: {exc}")

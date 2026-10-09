@@ -172,6 +172,49 @@ def test_common_failures_say_what_to_do(status, detail, expected):
     assert expected in explain_provider_error(status, detail, "m", "https://h/v1/chat/completions")
 
 
+def test_calls_are_spaced_to_the_published_rpm():
+    clock = {"t": 0.0}
+    slept = []
+
+    def now():
+        return clock["t"]
+
+    def sleep(seconds):
+        slept.append(seconds)
+        clock["t"] += seconds
+
+    llm = OpenAILLM(
+        model="m", api_key="k", base_url="https://h/v1",
+        rpm=30, pace_key="pace-test", sleeper=sleep, clock=now,
+        transport=transport(reply("ok")),
+    )
+    llm.complete("", [{"role": "user", "content": "a"}])
+    llm.complete("", [{"role": "user", "content": "b"}])
+    assert slept == [2.0]  # 60/30 seconds between calls
+
+
+def test_a_429_waits_for_retry_after_and_tries_once():
+    slept = []
+
+    class Once:
+        def __init__(self, status, payload):
+            self.status_code = status
+            self.headers = {"retry-after": "0"}
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    queue = [Once(429, {"error": {"message": "slow down"}}), Once(200, reply("after"))]
+    out = OpenAILLM(
+        model="m", api_key="k", base_url="https://h/v1",
+        sleeper=lambda seconds: slept.append(seconds),
+        transport=lambda url, headers, body: queue.pop(0),
+    ).complete("", [{"role": "user", "content": "a"}])
+    assert slept == [0.0]
+    assert out["content"][0]["text"] == "after"
+
+
 # ---- routing --------------------------------------------------------------
 
 def test_openai_shaped_provider_gets_the_openai_client(tmp_path):

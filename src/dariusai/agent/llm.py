@@ -133,14 +133,32 @@ def build_llm(store, model: str | None = None):
     if protocol == "anthropic":
         return AnthropicLLM.from_store(store, model=model)
 
+    from .model_catalog import limits_for
     from .openai_llm import OpenAILLM
+
+    chosen = model or active["model"] or ""
+    limits = limits_for(active["name"], chosen)
+    # Only override the client's own defaults when this provider actually
+    # publishes the number. An unknown model stays at 128k / 4096.
+    extra: dict = {}
+    if limits.context_window:
+        extra["context_window"] = limits.context_window
+    budget = limits.max_output_tokens or limits.completion_tokens
+    if budget:
+        extra["max_tokens"] = budget
+    if limits.timeout:
+        extra["timeout"] = limits.timeout
+    if limits.rpm:
+        extra["rpm"] = limits.rpm
+        extra["pace_key"] = active["name"]
     return OpenAILLM(
-        model=model or active["model"] or "",
+        model=chosen,
         api_key=store.get_provider_api_key(active["name"]),
         # Fall back to the preset's own base URL when the provider row has
         # none: an empty string would normalise to api.openai.com, silently
         # sending a MiniMax key to OpenAI.
         base_url=active["base_url"] or spec_for(active["name"]).base_url,
+        **extra,
     )
 
 
