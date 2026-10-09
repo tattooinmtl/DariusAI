@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The app version this page was built with; tools/bump_version.py keeps it in step. -->
+<meta name="dariusai-version" content="0.97.0a0">
 <title>DariusAI</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="stylesheet" href="/vendor/codemirror/codemirror.min.css">
@@ -1172,6 +1174,26 @@
     return fetch("/api/version", { cache: "no-store" }).then(function (r) { return r.json(); });
   }
 
+  // The version this page was built for. If the server reports another one,
+  // the page is newer (or older) than the Python behind it — a reload
+  // can't fix that, only restarting the app can.
+  var PAGE_VERSION = (document.querySelector('meta[name="dariusai-version"]') || {}).content || "";
+  var updateMode = null;   // null | "reload" | "restart"
+  function offerUpdate(mode, v) {
+    if (updateMode === "restart") return;            // the stronger offer wins
+    updateMode = mode;
+    var btn = document.getElementById("btnReload");
+    if (mode === "restart") {
+      btn.textContent = "⟳ Updated — Restart DariusAI";
+      btn.title = "This window shows " + PAGE_VERSION + " but the app behind it is still " + v.version +
+                  ". Restart to run the new version.";
+    }
+    btn.style.display = "";
+  }
+  function checkServerMatchesPage(v) {
+    if (PAGE_VERSION && v.version && v.version !== PAGE_VERSION) offerUpdate("restart", v);
+  }
+
   readVersion().then(function (v) {
     APP_VERSION = v;
     loadedBuild = v.page_build;
@@ -1179,6 +1201,7 @@
     badge.textContent = v.display;
     badge.title = "DariusAI " + v.version;
     badge.classList.toggle("prerelease", /alpha|beta|rc/.test(v.display));
+    checkServerMatchesPage(v);
   }).catch(function () { /* offline/static hosting — the badge just stays empty */ });
 
   // A window left open across an update keeps running the page it was
@@ -1189,9 +1212,8 @@
   setInterval(function () {
     if (document.hidden || loadedBuild === null) return;
     readVersion().then(function (v) {
-      if (v.page_build && v.page_build !== loadedBuild) {
-        document.getElementById("btnReload").style.display = "";
-      }
+      checkServerMatchesPage(v);
+      if (v.page_build && v.page_build !== loadedBuild) offerUpdate("reload", v);
     }).catch(function () { /* server restarting — try again next tick */ });
   }, 5000);
 
@@ -3571,6 +3593,22 @@
       messagesEl.scrollTop = messagesEl.scrollHeight;
       return thinkingBox;
     }
+    // Same rules as agent/chat.py split_reasoning(): every <think>…</think>
+    // block is reasoning; an unclosed <think> makes the rest reasoning; a
+    // lone </think> means everything before it was.
+    function splitReasoning(text) {
+      var parts = [], answer = String(text).replace(/<think>([\s\S]*?)<\/think>/gi, function (_, r) {
+        parts.push(r.trim()); return "";
+      });
+      var low = answer.toLowerCase(), i;
+      if ((i = low.indexOf("<think>")) >= 0) {
+        parts.push(answer.slice(i + 7).trim()); answer = answer.slice(0, i);
+      } else if ((i = low.indexOf("</think>")) >= 0) {
+        parts.unshift(answer.slice(0, i).trim()); answer = answer.slice(i + 8);
+      }
+      return { reasoning: parts.filter(Boolean).join("\n\n"), answer: answer.trim() };
+    }
+
     function appendThinkingStep(kind, text) {
       if (!thinkingBox) openThinkingBox();
       var body = thinkingBox.querySelector(".chat-thinking-body");
@@ -3646,6 +3684,17 @@
       ws.onmessage = function (ev) {
         var data;
         try { data = JSON.parse(ev.data); } catch (e) { return; }
+        // Safety net for inline <think> reasoning (MiniMax, GLM, DeepSeek).
+        // The server splits it since 0.95, but a page can end up talking to
+        // an older server; unsplit, the reply rendered as an empty HTML block.
+        if (data.type === "assistant_text" && /<\/?think>/i.test(data.text || "")) {
+          var split = splitReasoning(data.text);
+          if (split.reasoning) {
+            appendThinkingStep("reason", split.reasoning);
+            darius.onChat({ type: "reasoning", text: split.reasoning });
+          }
+          data = Object.assign({}, data, { text: split.answer || "(no response)" });
+        }
         var reaction = darius.onChat(data);   // the robot follows every event
         if (data.type === "error") {
           closeThinkingBox();
@@ -6228,7 +6277,17 @@
   });
   pollBlender();
   setInterval(pollBlender, 5000);
-  document.getElementById("btnReload").addEventListener("click", function () { location.reload(); });
+  document.getElementById("btnReload").addEventListener("click", function () {
+    var api = window.pywebview && window.pywebview.api;
+    if (updateMode === "restart" && api && api.restart) {
+      this.textContent = "Restarting…";
+      api.restart();                     // a new window opens; this one closes
+    } else if (updateMode === "restart") {
+      this.textContent = "Close and reopen DariusAI to finish updating";
+    } else {
+      location.reload();
+    }
+  });
 
   document.getElementById("btnClose").addEventListener("click", quitApp);
   document.getElementById("btnMinimize").addEventListener("click", function () {

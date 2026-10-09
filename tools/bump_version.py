@@ -32,6 +32,7 @@ ROOT = Path(__file__).resolve().parents[1]
 INIT = ROOT / "src" / "dariusai" / "__init__.py"
 PYPROJECT = ROOT / "pyproject.toml"
 LOCK = ROOT / "version_lock.json"
+PAGE = ROOT / "src" / "dariusai" / "viz" / "static" / "index.html"
 
 # What counts as "the app changed".
 SOURCE_GLOBS = ("src/**/*.py", "src/**/static/index.html", "launch.pyw")
@@ -87,6 +88,12 @@ def write_version(new: str) -> None:
     pyproject = PYPROJECT.read_text(encoding="utf-8")
     PYPROJECT.write_text(re.sub(r'^version = "[^"]+"', f'version = "{new}"', pyproject, count=1, flags=re.M),
                          encoding="utf-8")
+    # The page names the version it belongs to, so a window can tell a
+    # new page running against an old server (reload is not enough there).
+    page = PAGE.read_bytes().decode("utf-8")
+    page = re.sub(r'<meta name="dariusai-version" content="[^"]*">',
+                  f'<meta name="dariusai-version" content="{new}">', page, count=1)
+    PAGE.write_bytes(page.encode("utf-8"))
 
 
 def write_lock(version: str) -> str:

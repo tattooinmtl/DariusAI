@@ -71,7 +71,12 @@ def test_page_reads_its_version_from_the_api():
     page = (ROOT / "src/dariusai/viz/static/index.html").read_text(encoding="utf-8")
     assert 'id="versionBadge"' in page
     assert '"/api/version"' in page
-    assert dariusai.__version__ not in page  # never hardcoded in the markup
+    # Never hardcoded in the visible markup. The one exception is the
+    # dariusai-version meta tag, which tools/bump_version.py writes and
+    # test_update_restart.py checks: the page uses it to notice it is
+    # running against an older server.
+    meta = f'<meta name="dariusai-version" content="{dariusai.__version__}">'
+    assert page.count(dariusai.__version__) == 1 and meta in page
 
 
 def test_cli_version_flag_works_without_a_subcommand(capsys):

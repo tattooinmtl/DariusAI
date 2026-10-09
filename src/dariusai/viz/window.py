@@ -130,6 +130,36 @@ class DesktopAPI:
         timer.start()
         self._exit_timer = timer
 
+    def restart(self) -> bool:
+        """Start a fresh copy of the app, then quit this one.
+
+        Reloading the page is not enough after an update: it fetches the new
+        HTML from disk, but the Python behind it is still the old process —
+        a new chat panel talking to an old agent loop. That mismatch is how
+        replies came out as empty HTML blocks after the 0.95 fix was merged.
+
+        The new launcher is the venv's own pythonw, built from sys.prefix:
+        under a venv, sys.executable is the base interpreter the venv's
+        redirector handed off to, and it would start without our packages.
+        Returns False (and stays open) if the launcher can't be found."""
+        import subprocess
+        import sys
+
+        root = Path(__file__).resolve().parents[3]
+        script = root / "launch.pyw"
+        exe = Path(sys.prefix) / "Scripts" / "pythonw.exe"
+        if not exe.exists():
+            exe = Path(sys.executable)
+        if not script.exists() or not exe.exists():
+            return False
+        flags = 0
+        if os.name == "nt":
+            flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+        subprocess.Popen([str(exe), str(script)], cwd=str(root), creationflags=flags, close_fds=True,
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.quit()
+        return True
+
     def close(self) -> None:
         """The ✕ button quits — it does not hide. Hide-to-tray lives on
         minimize, so "keep the app open in the tray" is still one click
