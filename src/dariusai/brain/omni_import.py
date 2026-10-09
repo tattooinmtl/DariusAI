@@ -169,7 +169,9 @@ def import_addon(store: BrainStore, root: Path | str | None = None) -> dict[str,
             skill = parse_skill_file(path)
             if skill is None:
                 continue
-            group = group_of(path, skills_dir)
+            # A skill with no group folder still needs a branch: every skill
+            # hangs off one, never straight off the centre.
+            group = group_of(path, skills_dir) or "general"
             skill.id = "addon-" + path.parent.name
             if group:
                 branch_id = "addon-group-" + group

@@ -232,3 +232,47 @@ def delete_key_for_test(key_path: str) -> None:
         winreg.DeleteKey(winreg.HKEY_CURRENT_USER, key_path)
     except FileNotFoundError:
         pass
+
+
+def total_ram_gb() -> float:
+    """Physical memory, in GB (0 if it can't be read)."""
+    import ctypes
+
+    class MEMORYSTATUSEX(ctypes.Structure):
+        _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+    try:
+        st = MEMORYSTATUSEX()
+        st.dwLength = ctypes.sizeof(st)
+        ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st))
+        return st.ullTotalPhys / 2**30
+    except Exception:
+        return 0.0
+
+
+LOW_MEMORY_FLAGS = "--enable-low-end-device-mode --renderer-process-limit=1"
+
+
+def apply_webview_memory_flags(env: dict | None = None) -> bool:
+    """On small PCs, run the app's WebView2 in Chromium's low-end device mode.
+
+    The window's browser engine is most of the app's memory (~500 MB of
+    ~650 MB measured on 2026-10-09). Low-end device mode trades some caching
+    for a smaller footprint. On automatically at 8 GB of RAM or less;
+    DARIUSAI_LOW_MEMORY=1 forces it on, =0 off. Must run before the first
+    webview window is created. Returns whether the flags were applied."""
+    env = os.environ if env is None else env
+    choice = env.get("DARIUSAI_LOW_MEMORY", "").strip()
+    if choice == "0":
+        return False
+    if choice != "1":
+        ram = total_ram_gb()
+        if not ram or ram > 8.5:
+            return False
+    current = env.get("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "")
+    if "--enable-low-end-device-mode" not in current:
+        env["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = (current + " " + LOW_MEMORY_FLAGS).strip()
+    return True

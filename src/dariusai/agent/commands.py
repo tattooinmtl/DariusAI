@@ -26,6 +26,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from .sandbox import quiet_creationflags   # no console window per child process
+
 
 # ---------------------------------------------------------------------------
 # Typed surface
@@ -121,6 +123,7 @@ def _shell_cmd(command: str, *args: str) -> str:
         capture_output=True,
         text=True,
         timeout=60,
+        creationflags=quiet_creationflags(),
     )
     out = proc.stdout or ""
     err = proc.stderr or ""
@@ -414,6 +417,7 @@ def _cmd_test(ctx: CommandContext, args: list) -> CommandResult:
     try:
         proc = subprocess.run(
             cmd, cwd=project_dir, capture_output=True, text=True, timeout=300,
+            creationflags=quiet_creationflags(),
         )
     except FileNotFoundError:
         return _err("pytest not installed.")
@@ -444,6 +448,7 @@ def _cmd_run(ctx: CommandContext, args: list) -> CommandResult:
     try:
         proc = subprocess.run(
             args, cwd=project_dir, capture_output=True, text=True, timeout=60,
+            creationflags=quiet_creationflags(),
         )
     except Exception as exc:
         return _err(f"run failed: {exc}")
@@ -885,6 +890,7 @@ def _cmd_git(ctx: CommandContext, args: list) -> CommandResult:
     try:
         proc = subprocess.run(
             ["git"] + cmd, cwd=project_dir, capture_output=True, text=True, timeout=30,
+            creationflags=quiet_creationflags(),
         )
     except FileNotFoundError:
         return _err("git not installed.")
@@ -896,10 +902,11 @@ def _cmd_commit(ctx: CommandContext, args: list) -> CommandResult:
     msg = " ".join(args) if args else "auto: commit"
     project_dir = Path(getattr(ctx.app_state, "project_dir", "."))
     try:
-        subprocess.run(["git", "add", "-A"], cwd=project_dir, check=True, timeout=30)
+        subprocess.run(["git", "add", "-A"], cwd=project_dir, check=True, timeout=30, creationflags=quiet_creationflags())
         result = subprocess.run(
             ["git", "commit", "-m", msg], cwd=project_dir,
             capture_output=True, text=True, timeout=30,
+            creationflags=quiet_creationflags(),
         )
     except FileNotFoundError:
         return _err("git not installed.")
@@ -913,6 +920,7 @@ def _cmd_push(ctx: CommandContext, args: list) -> CommandResult:
         proc = subprocess.run(
             ["git", "push"] + args, cwd=project_dir,
             capture_output=True, text=True, timeout=60,
+            creationflags=quiet_creationflags(),
         )
     except FileNotFoundError:
         return _err("git not installed.")
@@ -926,6 +934,7 @@ def _cmd_pull(ctx: CommandContext, args: list) -> CommandResult:
         proc = subprocess.run(
             ["git", "pull"] + args, cwd=project_dir,
             capture_output=True, text=True, timeout=60,
+            creationflags=quiet_creationflags(),
         )
     except FileNotFoundError:
         return _err("git not installed.")
@@ -941,6 +950,7 @@ def _cmd_branch(ctx: CommandContext, args: list) -> CommandResult:
         proc = subprocess.run(
             ["git", "checkout", "-b", args[0]], cwd=project_dir,
             capture_output=True, text=True, timeout=30,
+            creationflags=quiet_creationflags(),
         )
     except FileNotFoundError:
         return _err("git not installed.")
@@ -956,6 +966,7 @@ def _cmd_merge(ctx: CommandContext, args: list) -> CommandResult:
         proc = subprocess.run(
             ["git", "merge"] + args, cwd=project_dir,
             capture_output=True, text=True, timeout=30,
+            creationflags=quiet_creationflags(),
         )
     except FileNotFoundError:
         return _err("git not installed.")
@@ -969,6 +980,7 @@ def _cmd_rebase(ctx: CommandContext, args: list) -> CommandResult:
         proc = subprocess.run(
             ["git", "rebase"] + args, cwd=project_dir,
             capture_output=True, text=True, timeout=30,
+            creationflags=quiet_creationflags(),
         )
     except FileNotFoundError:
         return _err("git not installed.")
@@ -982,6 +994,7 @@ def _cmd_diff(ctx: CommandContext, args: list) -> CommandResult:
         proc = subprocess.run(
             ["git", "diff"] + args, cwd=project_dir,
             capture_output=True, text=True, timeout=30,
+            creationflags=quiet_creationflags(),
         )
     except FileNotFoundError:
         return _err("git not installed.")
@@ -996,6 +1009,7 @@ def _cmd_log(ctx: CommandContext, args: list) -> CommandResult:
         proc = subprocess.run(
             ["git", "log", "--oneline", "-n", n], cwd=project_dir,
             capture_output=True, text=True, timeout=30,
+            creationflags=quiet_creationflags(),
         )
     except FileNotFoundError:
         return _err("git not installed.")
@@ -1028,6 +1042,7 @@ def _cmd_stash(ctx: CommandContext, args: list) -> CommandResult:
         proc = subprocess.run(
             ["git", "stash"] + args, cwd=project_dir,
             capture_output=True, text=True, timeout=30,
+            creationflags=quiet_creationflags(),
         )
     except FileNotFoundError:
         return _err("git not installed.")

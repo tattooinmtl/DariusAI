@@ -1,6 +1,6 @@
 {
-  "version": "0.99.1a0",
-  "fingerprint": "27ae534a5929fe3d0847fb77cb3e413f28203e7ffc3085ae0482eb7e41da8389",
-  "files": 43,
+  "version": "0.99.2a0",
+  "fingerprint": "d3a1c591f3fb8056932ce4ebaa0a313b3e5d1f0eae9a0efea9e772d0a7437845",
+  "files": 44,
   "_comment": "Regenerate with tools/bump_version.py. A mismatch means the app changed without a version bump; tests/test_version_lock.py enforces it."
 }

@@ -174,6 +174,9 @@ def _log_conversation_turn(store: BrainStore, turn: dict[str, Any]) -> None:
         "branch": branch_id,
         "path": [COORDINATOR_ID, branch_id, saved.id],
         "route": branch_id,
+        # what the new node branched from: the OKF anchor when the brain has
+        # one, otherwise the conversations trunk
+        "source": okf_anchor_id or branch_id,
     })
 
 

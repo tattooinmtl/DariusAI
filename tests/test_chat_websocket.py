@@ -12,6 +12,31 @@ from dariusai.viz.server import create_app
 from _stubs import ScriptedLLM, text_resp, tool_resp
 
 
+# Messages a turn may carry besides the ones a test is about: the session
+# greeting every chat socket opens with, token counters, inline reasoning.
+NOISE = {"session_loaded", "token_stats", "reasoning"}
+
+
+def recv(ws):
+    """The next message that isn't protocol noise."""
+    while True:
+        msg = ws.receive_json()
+        if msg.get("type") not in NOISE:
+            return msg
+
+
+def replayed_events(client):
+    """Everything /ws/events replays, up to its end-of-history marker —
+    never a fixed count, which hung the suite whenever history was shorter."""
+    out = []
+    with client.websocket_connect("/ws/events") as ws:
+        while True:
+            e = ws.receive_json()
+            if e.get("kind") == "replay_done":
+                return out
+            out.append(e)
+
+
 def make_client(tmp_path, responses):
     llm = ScriptedLLM(responses)
     app = create_app(tmp_path / "brain", project_dir=tmp_path, llm=llm)
@@ -22,7 +47,7 @@ def test_chat_simple_reply(tmp_path):
     client, llm = make_client(tmp_path, [text_resp("hello back")])
     with client.websocket_connect("/ws/chat") as ws:
         ws.send_text("hi")
-        msg = ws.receive_json()
+        msg = recv(ws)
         # Final reply carries `is_final: True` so the chat UI closes its
         # thinking box and renders this as the actual answer.
         assert msg == {"type": "assistant_text", "text": "hello back", "is_final": True}
@@ -35,7 +60,7 @@ def test_chat_streams_tool_activity(tmp_path):
     ])
     with client.websocket_connect("/ws/chat") as ws:
         ws.send_text("list files")
-        msgs = [ws.receive_json() for _ in range(3)]
+        msgs = [recv(ws) for _ in range(3)]
     types = [m["type"] for m in msgs]
     assert types == ["tool_call_start", "tool_call_result", "assistant_text"]
     assert msgs[0]["name"] == "list_dir"
@@ -45,9 +70,9 @@ def test_chat_conversation_persists_within_connection(tmp_path):
     client, llm = make_client(tmp_path, [text_resp("first"), text_resp("second")])
     with client.websocket_connect("/ws/chat") as ws:
         ws.send_text("turn one")
-        ws.receive_json()
+        recv(ws)
         ws.send_text("turn two")
-        ws.receive_json()
+        recv(ws)
     second_call_messages = llm.calls[1]["messages"]
     assert any(m["role"] == "user" and m["content"] == "turn one" for m in second_call_messages)
 
@@ -63,12 +88,12 @@ def test_chat_llm_exception_sends_error_and_does_not_hang(tmp_path):
     client = TestClient(app)
     with client.websocket_connect("/ws/chat") as ws:
         ws.send_text("this will fail")
-        msg = ws.receive_json()
+        msg = recv(ws)
         assert msg["type"] == "error"
         assert "simulated API failure" in msg["message"]
         # connection is still alive and usable for a next turn, not hung/dead
         ws.send_text("still there?")
-        msg2 = ws.receive_json()
+        msg2 = recv(ws)
         assert msg2["type"] == "error"
 
 
@@ -109,7 +134,7 @@ def test_chat_turn_is_indexed_as_conversation_with_links(tmp_path):
 
     with client.websocket_connect("/ws/chat") as ws:
         ws.send_text("USGS API calls for live earthquakes and map markers")
-        msg = ws.receive_json()
+        msg = recv(ws)
         assert msg["type"] == "assistant_text"
 
     hits = client.get("/api/search", params={"q": "usgs", "limit": 20}).json()
@@ -123,9 +148,8 @@ def test_chat_turn_is_indexed_as_conversation_with_links(tmp_path):
     assert any("usgs" in t.lower() for t in node["tags"])
     assert any("earthquake.usgs.gov" in s["url"] for s in node["sources"])
 
-    with client.websocket_connect("/ws/events") as ws:
-        # replay should include the turn's activity events
-        seen = [ws.receive_json() for _ in range(4)]
+    # replay should include the turn's activity events
+    seen = replayed_events(client)
     assert any(e.get("kind") == "conversation_logged" and e.get("id") == node_id for e in seen)
 
 
@@ -148,7 +172,7 @@ def test_conversation_node_branches_from_okf_when_present(tmp_path):
 
     with client.websocket_connect("/ws/chat") as ws:
         ws.send_text("How do we add USGS markers on OpenStreetMap?")
-        ws.receive_json()
+        recv(ws)
 
     hits = client.get("/api/search", params={"q": "usgs", "limit": 20}).json()
     conv_hits = [h for h in hits if h["category"] == "conversation"]
@@ -161,7 +185,6 @@ def test_conversation_node_branches_from_okf_when_present(tmp_path):
         for e in graph["edges"]
     )
 
-    with client.websocket_connect("/ws/events") as ws:
-        seen = [ws.receive_json() for _ in range(5)]
+    seen = replayed_events(client)
     evt = next(e for e in seen if e.get("kind") == "conversation_logged" and e.get("id") == node_id)
     assert evt.get("source") == "omni-okf-knowledge"

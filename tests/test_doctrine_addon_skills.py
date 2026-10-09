@@ -81,12 +81,17 @@ def test_rejected_external_tool_skills_do_not_exist():
         assert not path.exists(), f"rejected skill back on disk: {r}"
 
 
-def test_skill_count_is_93():
-    """The cleanup landed 92 skills — 14 superpowers + 78 addon. The
-    93rd is `gamedev/3dgame`, added with the Blender MCP bridge.
-    A regression that adds or removes skills silently is caught here."""
-    skills = list(SKILLS_ROOT.glob("*/*/SKILL.md"))
-    assert len(skills) == 93, f"expected 93 skills, got {len(skills)}"
+def test_skill_count():
+    """The 2026-08-13 cleanup landed 93 skills (14 superpowers + 78 addon +
+    gamedev/3dgame). The 2026-08-28 publish added whole new groups (apple,
+    creative, mlops, github, productivity… — documented in the README) and
+    also re-added 14 of the pruned skills by accident; those were pruned
+    again on 2026-10-09. 182 at any depth (10 of them nested or ungrouped) is
+    the library as of that day.
+    A regression that adds or removes skills silently is caught here —
+    change this number deliberately when the library changes."""
+    skills = list(SKILLS_ROOT.rglob("SKILL.md"))
+    assert len(skills) == 182, f"expected 182 skills, got {len(skills)}"
 
 
 def test_skill_count_breakdown_by_group():
@@ -111,7 +116,10 @@ def test_skill_count_breakdown_by_group():
             continue
         count = len(list(group_dir.glob("*/SKILL.md")))
         actual[group_dir.name] = count
-    assert actual == expected, f"group counts drifted: {actual}"
+    # The groups the 08-13 cleanup decided on keep exactly these counts;
+    # groups added later (08-28) are allowed alongside them.
+    pinned = {k: actual.get(k) for k in expected}
+    assert pinned == expected, f"group counts drifted: {pinned}"
 
 
 # ---------------------------------------------------------------------------

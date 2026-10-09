@@ -130,3 +130,7 @@ desktop.ini
 
 # Throwaway brain the /tools command used to create in the launch folder
 /.dariusai-bogus/
+
+# Kept locally, not shipped: reference downloads and an unused logo (removed from the repo 2026-10-09)
+/Voice/
+/logo1.png

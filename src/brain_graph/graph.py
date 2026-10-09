@@ -1,4 +1,4 @@
-"""BrainGraph - NetworkX graph wrapper for the DariusAI brain.
+"""BrainGraph - the in-memory graph of the DariusAI brain.
 
 Provides:
 - Force-directed layout computation
@@ -10,9 +10,10 @@ Provides:
 from __future__ import annotations
 
 import json
+import math
 from typing import Any
 
-import networkx as nx
+from .lite import LiteMultiDiGraph
 
 
 COORDINATOR_ID = "brain-coordinator"
@@ -20,7 +21,7 @@ COORDINATOR_ID = "brain-coordinator"
 
 class BrainGraph:
     def __init__(self) -> None:
-        self.graph = nx.MultiDiGraph()
+        self.graph = LiteMultiDiGraph()   # was networkx; see lite.py
 
     def load_from_rows(
         self,
@@ -79,21 +80,18 @@ class BrainGraph:
     def layout(self, seed: int | None = None) -> dict[str, tuple[float, float]]:
         if len(self.graph.nodes) == 0:
             return {}
-        pos = nx.spring_layout(
-            self.graph,
-            k=2.5,
-            iterations=50,
-            seed=seed,
-        )
-        return {node: (float(x), float(y)) for node, (x, y) in pos.items()}
+        # A plain circle: nothing in the app uses a server-side layout any
+        # more (the page lays the graph out itself), so this only has to be
+        # deterministic and in [-1, 1].
+        ids = sorted(self.graph.nodes)
+        n = len(ids)
+        return {node: (math.cos(2 * math.pi * i / n), math.sin(2 * math.pi * i / n))
+                for i, node in enumerate(ids)}
 
     def shortest_path(self, source: str, target: str) -> list[str]:
         if source not in self.graph or target not in self.graph:
             return []
-        try:
-            return nx.shortest_path(self.graph, source, target)
-        except nx.NetworkXNoPath:
-            return []
+        return self.graph.shortest_path(source, target)
 
     def neighbors(self, node_id: str) -> list[str]:
         if node_id not in self.graph:
@@ -168,10 +166,13 @@ class BrainGraph:
         return path
 
     def degree_centrality(self) -> dict[str, float]:
-        return nx.degree_centrality(self.graph)
+        n = len(self.graph)
+        if n <= 1:
+            return {node: 1.0 for node in self.graph.nodes}
+        return {node: self.graph.degree(node) / (n - 1) for node in self.graph.nodes}
 
     def betweenness_centrality(self) -> dict[str, float]:
-        return nx.betweenness_centrality(self.graph)
+        return self.graph.betweenness()
 
     def to_payload(self) -> dict[str, Any]:
         nodes = [{"id": n, **d} for n, d in self.graph.nodes(data=True)]

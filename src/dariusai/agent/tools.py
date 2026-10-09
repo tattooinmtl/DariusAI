@@ -327,8 +327,16 @@ def _skill_roots(store: BrainStore) -> list[Path]:
 
 
 def _skills_under(root: Path, name: str = "*") -> list[Path]:
-    return sorted(root.glob(f"addon/skills/*/{name}/SKILL.md")) + \
-        sorted(root.glob(f"external_skills/*/{name}/SKILL.md"))
+    """Every SKILL.md at any depth: most are `<group>/<name>/`, but some
+    sit one level deeper (`mlops/inference/vllm/`) or have no group at all,
+    and the old fixed-depth glob left those 10 unreachable by skill_lookup
+    and invoke_skill."""
+    found = []
+    for lib in ("addon/skills", "external_skills"):
+        for path in sorted((root / lib).rglob("SKILL.md")) if (root / lib).is_dir() else []:
+            if name == "*" or path.parent.name == name:
+                found.append(path)
+    return found
 
 
 def _skill_files(store: BrainStore) -> list[Path]:
@@ -365,7 +373,8 @@ def _sync_skill_index(store: BrainStore, force: bool = False) -> PassageIndex:
     """
     index = _passage_index(store)
     if index.enabled and (force or index.stale()):
-        index.sync_paths(_skill_files(store))
+        with store.write_lock:       # same connection as the store: one writer at a time
+            index.sync_paths(_skill_files(store))
     return index
 
 

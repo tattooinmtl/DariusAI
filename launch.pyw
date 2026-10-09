@@ -230,6 +230,8 @@ def main() -> None:
     if splash.bound_port is None:
         return  # backend failed to start — error already shown, nothing to launch
 
+    from dariusai.os_integration import apply_webview_memory_flags
+    apply_webview_memory_flags()   # small PCs: WebView2 low-end mode, before the window exists
     import webview
     from dariusai.viz.window import DesktopAPI, attach_shutdown
 

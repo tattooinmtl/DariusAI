@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- The app version this page was built with; tools/bump_version.py keeps it in step. -->
-<meta name="dariusai-version" content="0.99.1a0">
+<meta name="dariusai-version" content="0.99.2a0">
 <title>DariusAI</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="stylesheet" href="/vendor/codemirror/codemirror.min.css">
@@ -878,6 +878,9 @@
   .sess-del.confirm { color: #fff; background: #b91c1c; border-color: #b91c1c; }
   .sess-filter.on { color: #fbbf24; border-color: rgba(251,191,36,0.5); }
   #chatSend.stop { background: #b91c1c; }
+  .chat-earlier { display: block; margin: 4px auto 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10);
+    color: #8b93b8; border-radius: 999px; padding: 5px 12px; font: 600 11.5px -apple-system, "Segoe UI", system-ui, sans-serif; cursor: pointer; }
+  .chat-earlier:hover { color: #dfe6ff; background: rgba(125,211,252,0.10); }
   #chatSend.stop:hover { background: #dc2626; }
 </style>
 </head>
@@ -974,17 +977,6 @@
 <div id="modalRoot"><div class="modal-box" id="modalBox"></div></div>
 
 <script src="/vendor/codemirror/codemirror.min.js"></script>
-<script src="/vendor/codemirror/mode-python.min.js"></script>
-<script src="/vendor/codemirror/mode-javascript.min.js"></script>
-<script src="/vendor/codemirror/mode-clike.min.js"></script>
-<script src="/vendor/codemirror/mode-xml.min.js"></script>
-<script src="/vendor/codemirror/mode-css.min.js"></script>
-<script src="/vendor/codemirror/mode-htmlmixed.min.js"></script>
-<script src="/vendor/codemirror/mode-shell.min.js"></script>
-<script src="/vendor/codemirror/addon-mode-simple.min.js"></script>
-<script src="/vendor/codemirror/mode-rust.min.js"></script>
-<script src="/vendor/codemirror/mode-go.min.js"></script>
-<script src="/vendor/codemirror/mode-markdown.min.js"></script>
 <script src="/vendor/codemirror/addon-matchbrackets.min.js"></script>
 <script src="/vendor/codemirror/addon-searchcursor.min.js"></script>
 <script src="/vendor/codemirror/addon-search.min.js"></script>
@@ -1275,6 +1267,38 @@
     sh: "shell", bash: "shell", shell: "shell", rust: "rust", rs: "rust", go: "go", golang: "go", json: "javascript",
   };
   function modeForLang(lang) { return LANG_MODE[(lang || "").toLowerCase()] || null; }
+
+  // Language modes load the first time a file or code block needs them, not
+  // all at startup (~110 KB of script that most sessions never use).
+  var MODE_FILES = {
+    python: ["mode-python"], javascript: ["mode-javascript"], css: ["mode-css"], xml: ["mode-xml"],
+    htmlmixed: ["mode-xml", "mode-javascript", "mode-css", "mode-htmlmixed"],
+    markdown: ["mode-xml", "mode-markdown"], shell: ["mode-shell"],
+    rust: ["addon-mode-simple", "mode-rust"], go: ["mode-go"], clike: ["mode-clike"],
+  };
+  var scriptLoads = {};
+  function loadVendorScript(name) {
+    if (!scriptLoads[name]) {
+      scriptLoads[name] = new Promise(function (resolve) {
+        var el = document.createElement("script");
+        el.src = "/vendor/codemirror/" + name + ".min.js";
+        el.onload = resolve; el.onerror = resolve;      // a missing mode just stays plain text
+        document.head.appendChild(el);
+      });
+    }
+    return scriptLoads[name];
+  }
+  function ensureMode(mode) {
+    var key = /^text\/x-/.test(mode || "") ? "clike" : mode;
+    var files = MODE_FILES[key];
+    if (!files) return Promise.resolve();
+    return files.reduce(function (p, f) { return p.then(function () { return loadVendorScript(f); }); }, Promise.resolve());
+  }
+  // Create with plain text if the mode isn't here yet, then switch over.
+  function applyModeWhenReady(cm, mode) {
+    if (!mode || mode === "text/plain") return;
+    ensureMode(mode).then(function () { cm.setOption("mode", mode); });
+  }
 
   // =====================================================================
   // Window Manager — dockable/floating panels with persisted layout
@@ -3716,6 +3740,35 @@
       setTimeout(function () { search.focus(); }, 0);
     }
 
+    // ---- keep the chat DOM bounded ---------------------------------------
+    // Every message, thinking box and read-only code editor used to stay in
+    // the page for the life of the window, so a long session got slower to
+    // scroll and type in. At most CHAT_DOM_MAX items stay; older ones leave
+    // the page (they're still saved in the session) behind a "show all" bar.
+    var CHAT_DOM_MAX = 150, SESSION_TAIL = 60, hiddenEarlier = 0, earlierBar = null, wantAll = false;
+    function updateEarlierBar() {
+      if (!hiddenEarlier) { if (earlierBar) { earlierBar.remove(); earlierBar = null; } return; }
+      if (!earlierBar) {
+        earlierBar = document.createElement("button");
+        earlierBar.className = "chat-earlier";
+        earlierBar.addEventListener("click", function () {
+          wantAll = true;
+          sendControl({ type: "session_open", id: currentSession.id });
+        });
+      }
+      earlierBar.textContent = "▲ " + hiddenEarlier + " earlier message" + (hiddenEarlier === 1 ? "" : "s") + " · show all";
+      messagesEl.insertBefore(earlierBar, messagesEl.firstChild);
+    }
+    function trimChat() {
+      var kids = Array.prototype.filter.call(messagesEl.children, function (el) { return el !== earlierBar && el !== welcome; });
+      var drop = kids.length - CHAT_DOM_MAX;
+      for (var i = 0; i < drop; i++) {
+        if (kids[i].classList.contains("chat-msg")) hiddenEarlier++;
+        kids[i].remove();
+      }
+      if (drop > 0) updateEarlierBar();
+    }
+
     function newSession() {
       if (turnBusy) sendControl({ type: "stop" });
       sendControl({ type: "session_new" });
@@ -3727,8 +3780,18 @@
       messageCount = 0;
       setBusy(false);
       var items = msg.display || [];
-      if (!items.length) { messagesEl.appendChild(welcome); darius.idle(); return; }
+      hiddenEarlier = 0; earlierBar = null;
+      if (!items.length) { messagesEl.appendChild(welcome); darius.idle(); wantAll = false; return; }
       var lastUser = "";
+      if (!wantAll && items.length > SESSION_TAIL) {
+        hiddenEarlier = items.length - SESSION_TAIL;
+        items = items.slice(-SESSION_TAIL);
+        for (var k = 0; k < msg.display.length - SESSION_TAIL; k++) {      // the reaction needs the prompt before it
+          if (msg.display[k].role === "user") lastUser = msg.display[k].text;
+        }
+      }
+      wantAll = false;
+      updateEarlierBar();
       items.forEach(function (d) {
         if (d.role === "user") { lastUser = d.text; appendMessage("user", d.text); }
         else appendMessage("assistant", d.text, DariusFace.reactionFor(d.text, lastUser, null));
@@ -3998,9 +4061,10 @@
       codeWrap.appendChild(collapsed);
 
       var cm = window.CodeMirror(cmHost, {
-        value: code, mode: modeForLang(lang) || "text/plain", theme: "dracula",
+        value: code, mode: "text/plain", theme: "dracula",
         readOnly: true, lineNumbers: true, viewportMargin: Infinity,
       });
+      applyModeWhenReady(cm, modeForLang(lang));
 
       copyBtn.addEventListener("click", function () {
         navigator.clipboard.writeText(code).then(function () {
@@ -4013,9 +4077,10 @@
         var host = document.createElement("div");
         host.style.height = "100%";
         var popCm = window.CodeMirror(host, {
-          value: code, mode: modeForLang(lang) || "text/plain", theme: "dracula",
+          value: code, mode: "text/plain", theme: "dracula",
           lineNumbers: true, matchBrackets: true,
         });
+        applyModeWhenReady(popCm, modeForLang(lang));
         WM.createFloatingOnly(id, (lang || "code") + " snippet", host, { x: 160 + popoutCounter * 20, y: 100 + popoutCounter * 20, w: 560, h: 380 });
         setTimeout(function () { popCm.refresh(); }, 30);
       });
@@ -4078,6 +4143,7 @@
         el.textContent = text;
       }
       messagesEl.appendChild(el);
+      trimChat();
       messagesEl.scrollTop = messagesEl.scrollHeight;
       compactOldCodeBlocks();
     }
@@ -4088,6 +4154,7 @@
       el.className = "chat-msg chat-" + role;
       el.textContent = text;
       messagesEl.appendChild(el);
+      trimChat();
       messagesEl.scrollTop = messagesEl.scrollHeight;
     }
 
@@ -4117,6 +4184,7 @@
         thinkingBox.classList.toggle("open");
       });
       messagesEl.appendChild(thinkingBox);
+      trimChat();
       messagesEl.scrollTop = messagesEl.scrollHeight;
       return thinkingBox;
     }
@@ -5061,9 +5129,11 @@
       }).then(function (data) {
         var mode = (forcedMode ? (EXT_MODE[forcedMode.replace(/^\./, "")] || LANG_MODE[forcedMode] || forcedMode) : null)
                    || modeForFilename(path) || "text/plain";
-        openFiles[path] = { doc: new CodeMirror.Doc(data.content, mode), dirty: false };
-        tabOrder.push(path);
-        switchTo(path);
+        return ensureMode(mode).then(function () {
+          openFiles[path] = { doc: new CodeMirror.Doc(data.content, mode), dirty: false };
+          if (tabOrder.indexOf(path) < 0) tabOrder.push(path);
+          switchTo(path);
+        });
       }).catch(function (e) {
         document.getElementById("edStatus").textContent = "error: " + e.message;
       });

@@ -12,8 +12,10 @@ plenty fast at the node counts a single-user local brain will ever reach
 
 from __future__ import annotations
 
+import functools
 import json
 import sqlite3
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -108,13 +110,36 @@ COORDINATOR_ID = "brain-coordinator"
 CONVERSATIONS_ROOT = "conversations"
 
 
+def _writes(method):
+    """Run a store write under the store's lock, start to commit.
+
+    One connection is shared by the HTTP thread pool, the chat thread and
+    the tray's requests. SQLite (serialized mode) keeps each call safe, but
+    not a sequence of them: one thread's commit could land another thread's
+    half-written change. A re-entrant lock per write method keeps each write
+    whole (add_skill -> ensure_branch nests, hence RLock)."""
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self.write_lock:
+            return method(self, *args, **kwargs)
+    return wrapper
+
+
 class BrainStore:
     def __init__(self, home: Path | str):
         self.home = Path(home)
         self.skills_dir = self.home / "skills"
         self.skills_dir.mkdir(parents=True, exist_ok=True)
         self.db_path = self.home / "brain.db"
-        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=10)
+        self.write_lock = threading.RLock()
+        # WAL: readers no longer wait behind a writer; busy_timeout turns a
+        # momentary lock into a short wait instead of "database is locked".
+        try:
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute("PRAGMA busy_timeout=5000")
+        except sqlite3.DatabaseError:
+            pass
         self.conn.executescript(SCHEMA)
         self.conn.executescript(CHAT_SESSIONS_SCHEMA)
         self.conn.commit()
@@ -144,6 +169,7 @@ class BrainStore:
             self._reindex_all()
         return True
 
+    @_writes
     def _reindex_all(self) -> None:
         """Rebuild the index from the skill files on disk. Cheap at the node
         counts a local brain reaches, and it means a corrupt or missing index is
@@ -200,6 +226,7 @@ class BrainStore:
 
     # ---- writes ---------------------------------------------------------
 
+    @_writes
     def add_skill(self, skill: Skill) -> Skill:
         """Insert or overwrite a skill's file + index row. Same path for a
         brand-new self-taught skill and a manual edit from the viz panel."""
@@ -234,6 +261,7 @@ class BrainStore:
         self._load_graph()
         return skill
 
+    @_writes
     def ensure_branch(self, node_id: str, title: str, category: str, description: str = "") -> str:
         """Create a trunk node if it isn't there yet, and return its id.
 
@@ -257,6 +285,7 @@ class BrainStore:
         ))
         return node_id
 
+    @_writes
     def delete(self, node_id: str) -> None:
         row = self.conn.execute("SELECT file_path FROM nodes WHERE id = ?", (node_id,)).fetchone()
         if row:
@@ -266,6 +295,7 @@ class BrainStore:
         self.conn.commit()
         self._load_graph()
 
+    @_writes
     def touch_usage(self, node_id: str) -> None:
         self.conn.execute("UPDATE nodes SET usage_count = usage_count + 1 WHERE id = ?", (node_id,))
         self.conn.commit()
@@ -350,6 +380,7 @@ class BrainStore:
 
     # ---- chat sessions ------------------------------------------------------
 
+    @_writes
     def save_chat_session(self, session_id: str, title: str, messages: list, display: list) -> None:
         now = time.time()
         self.conn.execute(
@@ -385,11 +416,13 @@ class BrainStore:
                 "favorite": bool(row[4]), "messages": json.loads(row[5] or "[]"),
                 "display": json.loads(row[6] or "[]")}
 
+    @_writes
     def delete_chat_session(self, session_id: str) -> bool:
         cur = self.conn.execute("DELETE FROM chat_sessions WHERE id = ?", (session_id,))
         self.conn.commit()
         return cur.rowcount > 0
 
+    @_writes
     def set_chat_session_favorite(self, session_id: str, favorite: bool) -> bool:
         cur = self.conn.execute("UPDATE chat_sessions SET favorite = ? WHERE id = ?", (1 if favorite else 0, session_id))
         self.conn.commit()
@@ -397,6 +430,7 @@ class BrainStore:
 
     # ---- settings (key/value preferences) --------------------------------
 
+    @_writes
     def set_setting(self, key: str, value: str) -> None:
         self.conn.execute(
             "INSERT INTO settings (key, value) VALUES (?, ?) "
@@ -414,6 +448,7 @@ class BrainStore:
 
     # ---- LLM providers (API keys encrypted at rest via DPAPI) -------------
 
+    @_writes
     def upsert_provider(
         self, name: str, base_url: str = "", model: str = "", api_key: str | None = None
     ) -> dict[str, Any]:
@@ -470,10 +505,12 @@ class BrainStore:
             raise KeyError(f"no API key stored for provider {name!r}")
         return secrets.decrypt(row[0])
 
+    @_writes
     def delete_provider(self, name: str) -> None:
         self.conn.execute("DELETE FROM providers WHERE name = ?", (name,))
         self.conn.commit()
 
+    @_writes
     def set_active_provider(self, name: str) -> None:
         if not self.get_provider(name):
             raise KeyError(f"no provider named {name!r}")
