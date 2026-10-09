@@ -1338,36 +1338,52 @@ def _cmd_export_skill(ctx: CommandContext, args: list) -> CommandResult:
 
 
 # ---------------------------------------------------------------------------
-# Handlers — Web (8) — stubbed for now (not_implemented)
+# Handlers — Web: real lookups over free public endpoints (slash_web.py)
 # ---------------------------------------------------------------------------
 
 
+def _web_call(usage: str, args: list, fn) -> CommandResult:
+    if not args:
+        return _err(usage)
+    try:
+        return _ok(fn(" ".join(args)))
+    except Exception as exc:          # network down, 404, not a URL…
+        return _err(f"{type(exc).__name__}: {exc}")
+
+
 def _cmd_web(ctx: CommandContext, args: list) -> CommandResult:
-    return _not_implemented("web")
+    from .slash_web import fetch_page
+    return _web_call("Usage: /web <url>", args, fetch_page)
 
 
 def _cmd_browse(ctx: CommandContext, args: list) -> CommandResult:
-    return _not_implemented("browse")
+    from .slash_web import fetch_page
+    return _web_call("Usage: /browse <url>", args, fetch_page)
 
 
 def _cmd_fetch(ctx: CommandContext, args: list) -> CommandResult:
-    return _not_implemented("fetch")
+    from .slash_web import fetch_page
+    return _web_call("Usage: /fetch <url>", args, fetch_page)
 
 
 def _cmd_youtube(ctx: CommandContext, args: list) -> CommandResult:
-    return _not_implemented("youtube")
+    from .slash_web import youtube_info
+    return _web_call("Usage: /youtube <video url>", args, youtube_info)
 
 
 def _cmd_wiki(ctx: CommandContext, args: list) -> CommandResult:
-    return _not_implemented("wiki")
+    from .slash_web import wiki_summary
+    return _web_call("Usage: /wiki <topic>", args, wiki_summary)
 
 
 def _cmd_github(ctx: CommandContext, args: list) -> CommandResult:
-    return _not_implemented("github")
+    from .slash_web import github_repo
+    return _web_call("Usage: /github <owner/repo>", args, github_repo)
 
 
 def _cmd_docs(ctx: CommandContext, args: list) -> CommandResult:
-    return _not_implemented("docs")
+    from .slash_web import fetch_page
+    return _web_call("Usage: /docs <url>", args, fetch_page)
 
 
 # Note: /search is shared with memory/_cmd_search, take the memory version
@@ -1586,61 +1602,99 @@ def _cmd_memory_status(ctx: CommandContext, args: list) -> CommandResult:
 
 
 # ---------------------------------------------------------------------------
-# Handlers — Voice (6) — stubbed
+# Handlers — Voice: speech output with Windows' built-in engine
 # ---------------------------------------------------------------------------
 
 
+def _voice_settings(ctx: CommandContext) -> tuple[bool, int]:
+    try:
+        muted = (ctx.store.get_setting("voice_muted", "0") or "0") == "1"
+        volume = int(ctx.store.get_setting("voice_volume", "100") or 100)
+    except Exception:
+        muted, volume = False, 100
+    return muted, max(0, min(100, volume))
+
+
 def _cmd_voice(ctx: CommandContext, args: list) -> CommandResult:
-    return _not_implemented("voice")
+    return _err("Voice input needs a speech-recognition model, which DariusAI doesn't ship yet. "
+                "Voice output works: /speak <text>.")
 
 
 def _cmd_speak(ctx: CommandContext, args: list) -> CommandResult:
     if not args:
         return _err("Usage: /speak <text>")
-    return _not_implemented("speak")
+    muted, volume = _voice_settings(ctx)
+    if muted:
+        return _ok("Muted — /unmute to hear it.")
+    from .slash_web import speak
+    return _ok(speak(" ".join(args), volume))
 
 
 def _cmd_stop(ctx: CommandContext, args: list) -> CommandResult:
-    return _not_implemented("stop")
+    from .slash_web import stop_speaking
+    return _ok("Stopped speaking." if stop_speaking() else "Nothing was being spoken. "
+               "(To stop Darius mid-turn, use the Stop button.)")
 
 
 def _cmd_mute(ctx: CommandContext, args: list) -> CommandResult:
-    return _not_implemented("mute")
+    from .slash_web import stop_speaking
+    stop_speaking()
+    ctx.store.set_setting("voice_muted", "1")
+    return _ok("Voice muted.")
 
 
 def _cmd_unmute(ctx: CommandContext, args: list) -> CommandResult:
-    return _not_implemented("unmute")
+    ctx.store.set_setting("voice_muted", "0")
+    return _ok("Voice unmuted.")
 
 
 def _cmd_volume(ctx: CommandContext, args: list) -> CommandResult:
     if not args:
         return _err("Usage: /volume <level>")
-    return _not_implemented("volume")
+    try:
+        level = int(str(args[0]).rstrip("%"))
+    except ValueError:
+        return _err("Usage: /volume <0-100>")
+    if not 0 <= level <= 100:
+        return _err("Volume is 0 to 100.")
+    ctx.store.set_setting("voice_volume", str(level))
+    return _ok(f"Voice volume {level}.")
 
 
 # ---------------------------------------------------------------------------
-# Handlers — Login (5)
+# Handlers — Account: DariusAI has none; say so and point at what exists
 # ---------------------------------------------------------------------------
+
+_NO_ACCOUNTS = ("DariusAI has no accounts — it runs on this PC with your own provider keys, "
+                "which you manage in Settings → Providers (or /provider).")
 
 
 def _cmd_login(ctx: CommandContext, args: list) -> CommandResult:
-    return _not_implemented("login")
+    return _ok(_NO_ACCOUNTS)
 
 
 def _cmd_logout(ctx: CommandContext, args: list) -> CommandResult:
-    return _not_implemented("logout")
+    return _ok(_NO_ACCOUNTS)
 
 
 def _cmd_whoami(ctx: CommandContext, args: list) -> CommandResult:
-    return _not_implemented("whoami")
+    try:
+        active = ctx.store.get_active_provider() or {}
+        project = ctx.store.get_setting("project_dir", "") or "(none)"
+    except Exception:
+        active, project = {}, "(unknown)"
+    from .. import VERSION_DISPLAY
+    provider = active.get("name") or "none configured"
+    model = active.get("model") or "—"
+    return _ok(f"DariusAI {VERSION_DISPLAY} on this PC\nprovider: {provider}\nmodel: {model}\nproject: {project}")
 
 
 def _cmd_signup(ctx: CommandContext, args: list) -> CommandResult:
-    return _not_implemented("signup")
+    return _ok(_NO_ACCOUNTS)
 
 
 def _cmd_account(ctx: CommandContext, args: list) -> CommandResult:
-    return _not_implemented("account")
+    return _ok(_NO_ACCOUNTS)
 
 
 # ---------------------------------------------------------------------------
@@ -1985,19 +2039,19 @@ def _build_registry() -> dict:
 
     # Web (stubbed)
     _add(_make("web", "web", "web", "Fetch a URL.",
-               args_hint="<url>", handler=_not_implemented_handler("web")))
+               args_hint="<url>", handler=_cmd_web))
     _add(_make("browse", "web", "browse", "Browse a URL.",
-               args_hint="<url>", handler=_not_implemented_handler("browse")))
+               args_hint="<url>", handler=_cmd_browse))
     _add(_make("fetch", "web", "fetch", "Fetch content.",
-               args_hint="<url>", handler=_not_implemented_handler("fetch")))
+               args_hint="<url>", handler=_cmd_fetch))
     _add(_make("youtube", "web", "youtube", "YouTube transcript.",
-               args_hint="<url>", handler=_not_implemented_handler("youtube")))
+               args_hint="<url>", handler=_cmd_youtube))
     _add(_make("wiki", "web", "wiki", "Wikipedia.",
-               args_hint="<topic>", handler=_not_implemented_handler("wiki")))
+               args_hint="<topic>", handler=_cmd_wiki))
     _add(_make("github", "web", "github", "GitHub info.",
-               args_hint="<repo>", handler=_not_implemented_handler("github")))
+               args_hint="<repo>", handler=_cmd_github))
     _add(_make("docs", "web", "docs", "Fetch docs.",
-               args_hint="<url>", handler=_not_implemented_handler("docs")))
+               args_hint="<url>", handler=_cmd_docs))
 
     # Permissions
     _add(_make("trust", "permissions", "trust", "Trust a path.",
@@ -2062,29 +2116,29 @@ def _build_registry() -> dict:
 
     # Voice
     _add(_make("voice", "voice", "voice", "Toggle voice mode.",
-               handler=_not_implemented_handler("voice")))
+               handler=_cmd_voice))
     _add(_make("speak", "voice", "speak", "Speak text.",
-               args_hint="<text>", handler=_not_implemented_handler("speak"), aliases=("say",)))
+               args_hint="<text>", handler=_cmd_speak, aliases=("say",)))
     _add(_make("stop-voice", "voice", "stop", "Stop speaking.",
-               handler=_not_implemented_handler("stop")))
+               handler=_cmd_stop))
     _add(_make("mute", "voice", "mute", "Mute.",
-               handler=_not_implemented_handler("mute")))
+               handler=_cmd_mute))
     _add(_make("unmute", "voice", "unmute", "Unmute.",
-               handler=_not_implemented_handler("unmute")))
+               handler=_cmd_unmute))
     _add(_make("volume", "voice", "volume", "Set volume.",
-               args_hint="<level>", handler=_not_implemented_handler("volume")))
+               args_hint="<level>", handler=_cmd_volume))
 
     # Login
     _add(_make("login", "login", "login", "Login.",
-               handler=_not_implemented_handler("login")))
+               handler=_cmd_login))
     _add(_make("logout", "login", "logout", "Logout.",
-               handler=_not_implemented_handler("logout")))
+               handler=_cmd_logout))
     _add(_make("whoami", "login", "whoami", "Show current user.",
-               handler=_not_implemented_handler("whoami")))
+               handler=_cmd_whoami))
     _add(_make("signup", "login", "signup", "Sign up.",
-               handler=_not_implemented_handler("signup")))
+               handler=_cmd_signup))
     _add(_make("account", "login", "account", "Show account.",
-               handler=_not_implemented_handler("account")))
+               handler=_cmd_account))
 
     return reg
 

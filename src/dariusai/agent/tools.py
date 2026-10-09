@@ -18,6 +18,7 @@ from ..brain.retrieval import DEFAULT_BUDGET_CHARS, DEFAULT_TOP_K, PassageIndex
 from ..brain.skill import Skill, Source
 from ..brain.store import COORDINATOR_ID, BrainStore
 from ..events.bus import bus
+from .checkpoints import ChangeTracker
 from .sandbox import Sandbox
 
 MAX_READ_BYTES = 200_000
@@ -54,6 +55,9 @@ class ToolRegistry:
     # turn — the "one grant per prompt" contract lives at the session
     # boundary, not inside the sandbox's own state management.
     sandbox: "Sandbox | None" = None
+    # What this turn's file tools changed, for the "changed N files" card
+    # and Undo (see checkpoints.py).
+    changes: ChangeTracker = field(default_factory=ChangeTracker)
 
     def publish(self, event: dict[str, Any]) -> None:
         if self.on_event is not None:
@@ -147,13 +151,130 @@ def _read_file(sandbox: Sandbox, path: str) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def _write_file(sandbox: Sandbox, path: str, content: str) -> str:
+# Tools that only read: when the model asks for several of these in one
+# response, the chat loop runs them side by side.
+READ_ONLY_TOOLS = frozenset({
+    "read_file", "list_dir", "search_files", "glob_files", "search_brain", "browse_brain",
+    "load_skill", "skill_lookup", "invoke_skill", "current_project", "list_projects",
+    "project_types", "web_research",
+})
+
+# Folders a code search never wants: dependencies, build output, VCS data.
+SKIP_DIRS = frozenset({".git", ".hg", ".svn", "node_modules", ".venv", "venv", "__pycache__",
+                       ".pytest_cache", ".mypy_cache", "dist", "build", "target", ".next", ".idea"})
+MAX_SEARCH_FILE_BYTES = 1_000_000
+
+
+def _write_file(sandbox: Sandbox, path: str, content: str, changes: ChangeTracker | None = None) -> str:
     # for_write=True refuses external grants — writes are never allowed
     # into a granted external tree, only the primary sandbox root.
     p = sandbox.resolve(path, for_write=True)
+    if changes is not None:
+        changes.record(p)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content, encoding="utf-8")
     return f"wrote {len(content)} chars to {path}"
+
+
+def _edit_file(sandbox: Sandbox, path: str, old_string: str, new_string: str,
+               replace_all: bool = False, changes: ChangeTracker | None = None) -> str:
+    """Exact-text replacement. Rewriting a whole file to change one line
+    cost tokens and, on a big file, risked dropping the parts the model
+    didn't reproduce; this touches only the matched text."""
+    p = sandbox.resolve(path, for_write=True)
+    if not p.is_file():
+        return f"ERROR: {path} does not exist — use write_file to create it"
+    raw = p.read_bytes()
+    if len(raw) > MAX_READ_BYTES:
+        return f"ERROR: {path} is {len(raw)} bytes, over the {MAX_READ_BYTES}-byte limit"
+    text = raw.decode("utf-8")
+    if old_string == new_string:
+        return "ERROR: old_string and new_string are the same"
+    if not old_string:
+        return "ERROR: old_string is empty — use write_file to create or replace a whole file"
+    old, new = old_string, new_string
+    count = text.count(old)
+    if count == 0 and "\r\n" in text and "\r\n" not in old:
+        # the model wrote \n; the file uses \r\n
+        old, new = old.replace("\n", "\r\n"), new.replace("\n", "\r\n")
+        count = text.count(old)
+    if count == 0:
+        return (f"ERROR: old_string not found in {path}. Read the file again and copy the text exactly, "
+                f"including indentation.")
+    if count > 1 and not replace_all:
+        return (f"ERROR: old_string appears {count} times in {path}. Add surrounding lines so it is "
+                f"unique, or pass replace_all=true.")
+    if changes is not None:
+        changes.record(p)
+    first = text.find(old)
+    updated = text.replace(old, new) if replace_all else text.replace(old, new, 1)
+    p.write_bytes(updated.encode("utf-8"))
+    # a few lines around the (first) change, so the model can check it
+    line = text.count("\n", 0, first) + 1
+    lines = updated.splitlines()
+    lo, hi = max(1, line - 3), min(len(lines), line + new.count("\n") + 3)
+    snippet = "\n".join(f"{i:5}  {lines[i - 1]}" for i in range(lo, hi + 1))
+    n = count if replace_all else 1
+    return f"edited {path}: replaced {n} occurrence{'s' if n != 1 else ''}\n{snippet}"
+
+
+def _walk_files(root: Path):
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
+        for name in sorted(filenames):
+            yield Path(dirpath) / name
+
+
+def _search_files(sandbox: Sandbox, pattern: str, path: str = ".", glob: str = "",
+                  ignore_case: bool = False, max_results: int = 100) -> str:
+    """Regex search over file contents, like grep -rn, inside the sandbox."""
+    import fnmatch
+    import re as _re
+    try:
+        rx = _re.compile(pattern, _re.IGNORECASE if ignore_case else 0)
+    except _re.error as exc:
+        return f"ERROR: bad regex {pattern!r}: {exc}"
+    root = sandbox.resolve(path)
+    if root.is_file():
+        files = [root]
+    else:
+        files = _walk_files(root)
+    base = root if root.is_dir() else root.parent
+    max_results = max(1, min(int(max_results), 500))
+    hits, scanned = [], 0
+    for f in files:
+        if glob and not fnmatch.fnmatch(f.name, glob) and not fnmatch.fnmatch(f.relative_to(base).as_posix(), glob):
+            continue
+        try:
+            if f.stat().st_size > MAX_SEARCH_FILE_BYTES:
+                continue
+            data = f.read_bytes()
+        except OSError:
+            continue
+        if b"\0" in data[:4096]:
+            continue                                  # binary
+        scanned += 1
+        for n, line in enumerate(data.decode("utf-8", errors="replace").splitlines(), 1):
+            if rx.search(line):
+                hits.append(f"{f.relative_to(base).as_posix()}:{n}: {line.strip()[:200]}")
+                if len(hits) >= max_results:
+                    return "\n".join(hits) + f"\n… stopped at {max_results} matches (narrow the pattern or path)"
+    if not hits:
+        return f"no matches for {pattern!r} in {scanned} files"
+    return "\n".join(hits)
+
+
+def _glob_files(sandbox: Sandbox, pattern: str, path: str = ".") -> str:
+    """Files whose path matches a glob (e.g. **/*.py, src/**/test_*.ts),
+    most recently modified first."""
+    root = sandbox.resolve(path)
+    found = [p for p in root.glob(pattern)
+             if p.is_file() and not (set(p.relative_to(root).parts[:-1]) & SKIP_DIRS)]
+    found.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    if not found:
+        return f"no files match {pattern!r}"
+    more = f"\n… and {len(found) - 200} more" if len(found) > 200 else ""
+    return "\n".join(p.relative_to(root).as_posix() for p in found[:200]) + more
 
 
 def _request_external_read(sandbox: Sandbox, path: str, reason: str) -> str:
@@ -672,7 +793,53 @@ def build_tool_registry(store: BrainStore, sandbox: Sandbox | None = None, on_ev
             "properties": {"path": {"type": "string"}, "content": {"type": "string"}},
             "required": ["path", "content"],
         },
-        fn=lambda path, content: _write_file(sandbox, path, content),
+        fn=lambda path, content: _write_file(sandbox, path, content, reg.changes),
+    ))
+    _register(reg, store, ToolSpec(
+        name="edit_file",
+        description=("Replace exact text in an existing file. old_string must match the file exactly "
+                     "(indentation included) and be unique unless replace_all is true. Prefer this to "
+                     "write_file for changing part of a file."),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "old_string": {"type": "string", "description": "the exact text to replace"},
+                "new_string": {"type": "string", "description": "the replacement text"},
+                "replace_all": {"type": "boolean", "description": "replace every occurrence (default false)"},
+            },
+            "required": ["path", "old_string", "new_string"],
+        },
+        fn=lambda path, old_string, new_string, replace_all=False: _edit_file(
+            sandbox, path, old_string, new_string, replace_all, reg.changes),
+    ))
+    _register(reg, store, ToolSpec(
+        name="search_files",
+        description=("Search file contents with a regular expression (like grep -rn), skipping "
+                     ".git, node_modules, .venv, build output. Returns path:line: text."),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "pattern": {"type": "string", "description": "regular expression"},
+                "path": {"type": "string", "description": "folder or file to search (default: project root)"},
+                "glob": {"type": "string", "description": "only files matching this, e.g. *.py"},
+                "ignore_case": {"type": "boolean"},
+                "max_results": {"type": "integer"},
+            },
+            "required": ["pattern"],
+        },
+        fn=lambda pattern, path=".", glob="", ignore_case=False, max_results=100: _search_files(
+            sandbox, pattern, path, glob, ignore_case, max_results),
+    ))
+    _register(reg, store, ToolSpec(
+        name="glob_files",
+        description="Find files by name pattern, e.g. **/*.py or src/**/*.test.ts. Newest first.",
+        input_schema={
+            "type": "object",
+            "properties": {"pattern": {"type": "string"}, "path": {"type": "string"}},
+            "required": ["pattern"],
+        },
+        fn=lambda pattern, path=".": _glob_files(sandbox, pattern, path),
     ))
     _register(reg, store, ToolSpec(
         name="list_dir",

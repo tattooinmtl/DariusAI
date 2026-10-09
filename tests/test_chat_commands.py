@@ -227,7 +227,7 @@ async def test_not_implemented_command_returns_friendly_error(mock_ctx):
     await run_command(mock_ctx, "voice", [], "req-2", ws_send)
     assert len(sent) == 1
     assert sent[0]["status"] == "error"
-    assert "`/voice` is registered but not yet implemented" in sent[0]["message"]
+    assert "speech-recognition" in sent[0]["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -1014,19 +1014,34 @@ def test_deny_with_command(mock_ctx):
     assert res.status == "ok"
 
 
-# Voice commands: their usage-validator path works; the "ok" path returns
-# `not_implemented`. The full voice integration is SP4's scope.
+# Voice output is real since 0.99.3 (Windows' speech engine, slash_web.speak);
+# voice *input* still needs a speech-recognition model.
 def test_speak_rejects_empty_args(mock_ctx):
     spec = REGISTRY["speak"]
     res = spec.handler(mock_ctx, [])
     assert res.status == "error"
 
 
-def test_speak_with_text_returns_not_implemented(mock_ctx):
-    spec = REGISTRY["speak"]
-    res = spec.handler(mock_ctx, ["hello"])
-    assert res.status == "error"
-    assert "not yet implemented" in res.message
+def test_speak_with_text_speaks_at_the_saved_volume(mock_ctx, monkeypatch):
+    from dariusai.agent import slash_web
+    said = []
+    monkeypatch.setattr(slash_web, "speak", lambda text, volume=100: said.append((text, volume)) or "speaking")
+    mock_ctx.store.set_setting("voice_volume", "40")
+    res = REGISTRY["speak"].handler(mock_ctx, ["hello", "there"])
+    assert res.status == "ok" and said == [("hello there", 40)]
+
+
+def test_speak_is_silent_when_muted(mock_ctx, monkeypatch):
+    from dariusai.agent import slash_web
+    said = []
+    monkeypatch.setattr(slash_web, "speak", lambda text, volume=100: said.append(text) or "speaking")
+    monkeypatch.setattr(slash_web, "stop_speaking", lambda: False)
+    assert REGISTRY["mute"].handler(mock_ctx, []).status == "ok"
+    res = REGISTRY["speak"].handler(mock_ctx, ["hello"])
+    assert res.status == "ok" and "Muted" in res.message and said == []
+    REGISTRY["unmute"].handler(mock_ctx, [])
+    REGISTRY["speak"].handler(mock_ctx, ["hello"])
+    assert said == ["hello"]
 
 
 def test_volume_rejects_empty_args(mock_ctx):
@@ -1035,11 +1050,36 @@ def test_volume_rejects_empty_args(mock_ctx):
     assert res.status == "error"
 
 
-def test_volume_with_level_returns_not_implemented(mock_ctx):
+def test_volume_with_level_is_saved(mock_ctx):
     spec = REGISTRY["volume"]
-    res = spec.handler(mock_ctx, ["50"])
-    assert res.status == "error"
-    assert "not yet implemented" in res.message
+    assert spec.handler(mock_ctx, ["50"]).status == "ok"
+    assert mock_ctx.store.get_setting("voice_volume") == "50"
+    assert spec.handler(mock_ctx, ["150"]).status == "error"
+    assert spec.handler(mock_ctx, ["loud"]).status == "error"
+
+
+def test_web_commands_use_the_lookups(mock_ctx, monkeypatch):
+    from dariusai.agent import slash_web
+    monkeypatch.setattr(slash_web, "fetch_page", lambda url: "PAGE " + url)
+    monkeypatch.setattr(slash_web, "wiki_summary", lambda t: "WIKI " + t)
+    monkeypatch.setattr(slash_web, "github_repo", lambda r: "REPO " + r)
+    for name in ("web", "browse", "fetch", "docs"):
+        assert REGISTRY[name].handler(mock_ctx, ["example.com"]).message == "PAGE example.com"
+    assert REGISTRY["wiki"].handler(mock_ctx, ["SQLite", "database"]).message == "WIKI SQLite database"
+    assert REGISTRY["github"].handler(mock_ctx, ["a/b"]).message == "REPO a/b"
+    def boom(_):
+        raise ConnectionError("offline")
+    monkeypatch.setattr(slash_web, "fetch_page", boom)
+    res = REGISTRY["fetch"].handler(mock_ctx, ["example.com"])
+    assert res.status == "error" and "offline" in res.message
+
+
+def test_account_commands_explain_there_are_no_accounts(mock_ctx):
+    for name in ("login", "logout", "signup", "account"):
+        res = REGISTRY[name].handler(mock_ctx, [])
+        assert res.status == "ok" and "no accounts" in res.message
+    who = REGISTRY["whoami"].handler(mock_ctx, [])
+    assert who.status == "ok" and "provider:" in who.message and "model:" in who.message
 
 
 # --- Task 10: Tool-missing error paths (build / lint / format / test) -----

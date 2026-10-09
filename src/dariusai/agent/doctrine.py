@@ -133,7 +133,18 @@ CODE_OUTPUT = (
     "immediately working file."
 )
 
-DOCTRINE = "\n\n".join([SUPERPOWERS_BOOTSTRAP, ARCHITECTURE, RULES, KNOWLEDGE, CODE_OUTPUT])
+# Editing in place instead of rewriting whole files, and the search tools
+# instead of shelling out to grep/dir. Reads are cheap in parallel.
+FILES = (
+    "Working with files in the project:\n"
+    "- Change part of an existing file with `edit_file` (exact old text -> new text). Use `write_file` "
+    "only to create a file or replace it completely.\n"
+    "- Find code with `search_files` (regex over contents) and `glob_files` (names), not run_shell grep/dir.\n"
+    "- When you need several files, ask for them in one response; read-only tools run in parallel.\n"
+    "- The user sees every file you change as a diff with an Undo button, so keep changes to what the task needs."
+)
+
+DOCTRINE = "\n\n".join([SUPERPOWERS_BOOTSTRAP, ARCHITECTURE, RULES, KNOWLEDGE, FILES, CODE_OUTPUT])
 
 
 def with_doctrine(role_prompt: str) -> str:

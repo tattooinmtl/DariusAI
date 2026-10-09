@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import re
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -23,7 +24,8 @@ from ..brain.store import COORDINATOR_ID
 from ..events.bus import bus
 from .doctrine import with_doctrine
 from .llm import LLM
-from .tools import ToolRegistry
+from .checkpoints import ChangeTracker
+from .tools import READ_ONLY_TOOLS, ToolRegistry
 
 # Twelve was far too low: writing a handful of files is already five calls
 # before any reading, project creation or verification, so real work hit the
@@ -160,6 +162,14 @@ class ChatSession:
     # before every model call and every tool call; a model call already in
     # flight finishes first — the HTTP request can't be interrupted.
     _cancel: threading.Event = field(default_factory=threading.Event, repr=False)
+    # File changes per turn, for the "changed N files" card and Undo. Kept on
+    # the session, not the tool registry: switching projects swaps the
+    # registry, and Undo has to survive that.
+    changes: ChangeTracker = field(default_factory=ChangeTracker, repr=False)
+
+    def undo_turn(self, turn_id: str) -> dict[str, Any]:
+        """Put back the files a finished turn changed (see checkpoints.py)."""
+        return self.changes.undo(turn_id)
 
     def cancel(self) -> None:
         """Ask the running turn to stop at its next step."""
@@ -202,6 +212,8 @@ class ChatSession:
             sandbox.clear_external_grants()
 
         self._cancel.clear()          # a Stop pressed between turns must not kill the next one
+        self.tools.changes = self.changes
+        self.changes.begin(getattr(getattr(self.tools, "sandbox", None), "root", None))
         self.messages.append({"role": "user", "content": user_text})
         tool_schemas = self.tools.to_anthropic_tools()
         final_text = ""
@@ -303,6 +315,20 @@ class ChatSession:
 
                 results = []
                 stopped = False
+                # Several read-only calls in one response (read three files,
+                # search twice) run side by side instead of one after another.
+                if (len(tool_uses) > 1 and not self._cancel.is_set()
+                        and all(c["name"] in READ_ONLY_TOOLS for c in tool_uses)):
+                    for call in tool_uses:
+                        emit({"type": "tool_call_start", "name": call["name"], "input": call["input"]})
+                    with ThreadPoolExecutor(max_workers=min(4, len(tool_uses))) as pool:
+                        outputs = list(pool.map(lambda c: self.tools.call(c["name"], c["input"]), tool_uses))
+                    for call, output in zip(tool_uses, outputs):
+                        emit({"type": "tool_call_result", "name": call["name"], "result": output})
+                        tool_results.append({"name": call["name"], "result": output})
+                        results.append({"type": "tool_result", "tool_use_id": call["id"], "content": output})
+                        self._observe(i, call, output)
+                    tool_uses = []
                 for call in tool_uses:
                     if self._cancel.is_set():
                         # Every tool_use needs a tool_result or the next call
@@ -346,6 +372,11 @@ class ChatSession:
                     final_text = "\n\n".join(narration)
         finally:
             bus.publish({"kind": "agent_turn", "phase": "end", "route": COORDINATOR_ID})
+            # What this turn did to the files: the chat shows it as a card
+            # with the diffs and an Undo button.
+            card = self.changes.finish()
+            if card:
+                emit(card)
 
         # Persist state before responding: the compact record of what the
         # turn touched outlives both the eviction above and any later

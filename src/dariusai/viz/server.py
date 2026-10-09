@@ -1129,6 +1129,13 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
                     # Not JSON, or not a dict — treat as plain user text.
                     pass
 
+                if isinstance(parsed, dict) and parsed.get("type") == "undo_turn":
+                    # Put back the files a finished turn changed (the card's
+                    # Undo button). Runs between turns, like other controls.
+                    result = await asyncio.to_thread(session.undo_turn, str(parsed.get("turn", "")))
+                    await ws.send_json(result)
+                    continue
+
                 if isinstance(parsed, dict) and parsed.get("type") in ("session_new", "session_open"):
                     rec = None
                     if parsed["type"] == "session_open":

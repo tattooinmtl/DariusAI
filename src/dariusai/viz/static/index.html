@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- The app version this page was built with; tools/bump_version.py keeps it in step. -->
-<meta name="dariusai-version" content="0.99.2a0">
+<meta name="dariusai-version" content="0.99.3a0">
 <title>DariusAI</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="stylesheet" href="/vendor/codemirror/codemirror.min.css">
@@ -881,6 +881,34 @@
   .chat-earlier { display: block; margin: 4px auto 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10);
     color: #8b93b8; border-radius: 999px; padding: 5px 12px; font: 600 11.5px -apple-system, "Segoe UI", system-ui, sans-serif; cursor: pointer; }
   .chat-earlier:hover { color: #dfe6ff; background: rgba(125,211,252,0.10); }
+  /* what a turn changed: collapsible card with diffs and Undo */
+  .chat-changes { margin: 2px 0 10px; border: 1px solid rgba(110,168,255,0.25); border-radius: 10px; background: rgba(15,18,38,0.85);
+    font: 12px -apple-system, "Segoe UI", system-ui, sans-serif; color: #c3c9e6; overflow: hidden; }
+  .chat-changes-head { display: flex; align-items: center; gap: 8px; padding: 7px 10px; cursor: pointer; }
+  .chat-changes-head b { color: #dfe6ff; font-weight: 600; }
+  .chat-changes .plus { color: #6ee7b7; } .chat-changes .minus { color: #f87171; }
+  .chat-changes-spacer { flex: 1; }
+  .chat-changes-undo { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: #dfe6ff;
+    border-radius: 7px; padding: 4px 10px; font-weight: 600; font-size: 11.5px; font-family: inherit; cursor: pointer; }
+  .chat-changes-undo:hover { background: rgba(248,113,113,0.15); border-color: rgba(248,113,113,0.5); }
+  .chat-changes-undo.confirm { background: #b91c1c; border-color: #b91c1c; color: #fff; }
+  .chat-changes-undo:disabled { opacity: 0.5; cursor: default; }
+  .chat-changes-body { display: none; border-top: 1px solid rgba(255,255,255,0.07); }
+  .chat-changes.open .chat-changes-body { display: block; }
+  .chat-file { border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .chat-file-row { display: flex; gap: 8px; align-items: center; padding: 5px 10px; cursor: pointer; font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; }
+  .chat-file-row:hover { background: rgba(125,211,252,0.06); }
+  .chat-file-badge { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: rgba(255,255,255,0.08); color: #8b93b8; text-transform: uppercase; }
+  .chat-file-badge.added { color: #6ee7b7; background: rgba(110,231,183,0.12); }
+  .chat-file-badge.deleted { color: #f87171; background: rgba(248,113,113,0.12); }
+  .chat-file-diff { display: none; margin: 0; padding: 6px 10px 8px; max-height: 320px; overflow: auto; background: #070a18;
+    font: 11px/1.45 ui-monospace, Consolas, monospace; white-space: pre; }
+  .chat-file.open .chat-file-diff { display: block; }
+  .chat-file-diff span { display: block; min-height: 1.45em; }
+  .chat-file-diff .a { color: #6ee7b7; background: rgba(110,231,183,0.07); display: block; }
+  .chat-file-diff .r { color: #f87171; background: rgba(248,113,113,0.07); display: block; }
+  .chat-file-diff .h { color: #7dd3fc; display: block; }
+  .chat-changes-note { padding: 6px 10px; color: #8b93b8; font-size: 11.5px; border-top: 1px solid rgba(255,255,255,0.07); }
   #chatSend.stop:hover { background: #dc2626; }
 </style>
 </head>
@@ -4204,6 +4232,85 @@
       return { reasoning: parts.filter(Boolean).join("\n\n"), answer: answer.trim() };
     }
 
+    // ---- what a turn changed -----------------------------------------------
+    function renderChangesCard(data) {
+      var files = data.files || [];
+      if (!files.length) return;
+      var plus = 0, minus = 0;
+      files.forEach(function (f) { plus += f.added || 0; minus += f.removed || 0; });
+      var card = document.createElement("div");
+      card.className = "chat-changes";
+      card.setAttribute("data-turn", data.turn);
+      var head = document.createElement("div");
+      head.className = "chat-changes-head";
+      head.innerHTML = "<span>✎</span><b>Changed " + files.length + " file" + (files.length === 1 ? "" : "s") + "</b>" +
+        "<span class='plus'>+" + plus + "</span><span class='minus'>−" + minus + "</span><span class='chat-changes-spacer'></span>";
+      var undo = document.createElement("button");
+      undo.className = "chat-changes-undo"; undo.textContent = "Undo";
+      undo.title = "Put these files back the way they were before this turn";
+      var armed = null;
+      undo.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        if (!undo.classList.contains("confirm")) {
+          undo.classList.add("confirm"); undo.textContent = "Undo — sure?";
+          armed = setTimeout(function () { undo.classList.remove("confirm"); undo.textContent = "Undo"; }, 3000);
+          return;
+        }
+        clearTimeout(armed);
+        undo.disabled = true; undo.classList.remove("confirm"); undo.textContent = "Undoing…";
+        sendControl({ type: "undo_turn", turn: data.turn });
+      });
+      head.appendChild(undo);
+      head.addEventListener("click", function () { card.classList.toggle("open"); });
+      var body = document.createElement("div");
+      body.className = "chat-changes-body";
+      files.forEach(function (f) {
+        var item = document.createElement("div");
+        item.className = "chat-file";
+        var row = document.createElement("div");
+        row.className = "chat-file-row";
+        row.innerHTML = "<span class='chat-file-badge " + escapeHtml(f.status) + "'>" + escapeHtml(f.status) + "</span>" +
+          "<span style='flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis'>" + escapeHtml(f.path) + "</span>" +
+          "<span class='plus'>+" + (f.added || 0) + "</span> <span class='minus'>−" + (f.removed || 0) + "</span>";
+        var diff = document.createElement("pre");
+        diff.className = "chat-file-diff";
+        (f.diff || "").split("\n").forEach(function (line) {
+          var span = document.createElement("span");
+          span.textContent = line;
+          if (/^\+(?!\+\+)/.test(line)) span.className = "a";
+          else if (/^-(?!--)/.test(line)) span.className = "r";
+          else if (/^@@/.test(line)) span.className = "h";
+          diff.appendChild(span);          // every line its own block: no stray blank lines
+        });
+        row.addEventListener("click", function () { item.classList.toggle("open"); });
+        item.appendChild(row); item.appendChild(diff);
+        body.appendChild(item);
+      });
+      card.appendChild(head); card.appendChild(body);
+      messagesEl.appendChild(card);
+      trimChat();
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+    function showUndoResult(data) {
+      var card = messagesEl.querySelector(".chat-changes[data-turn='" + data.turn + "']");
+      var msg;
+      if (data.error) msg = "Couldn't undo: " + data.error;
+      else {
+        msg = (data.restored && data.restored.length ? "Restored " + data.restored.join(", ") + "." : "Nothing to restore.") +
+              (data.skipped && data.skipped.length ? " Kept " + data.skipped.join(", ") + " — changed again since this turn." : "");
+      }
+      if (card) {
+        var b = card.querySelector(".chat-changes-undo");
+        if (b) { b.textContent = data.error ? "Undo failed" : "Undone"; b.disabled = true; }
+        var note = document.createElement("div");
+        note.className = "chat-changes-note"; note.textContent = msg;
+        card.appendChild(note);
+      } else {
+        appendPlain("system", msg);
+      }
+      if (window.__editor && window.__editor.reloadTree) window.__editor.reloadTree();
+    }
+
     function appendThinkingStep(kind, text) {
       if (!thinkingBox) openThinkingBox();
       var body = thinkingBox.querySelector(".chat-thinking-body");
@@ -4316,6 +4423,10 @@
           appendThinkingStep("tool", "→ " + data.name + "(" + JSON.stringify(data.input) + ")");
         } else if (data.type === "tool_call_result") {
           appendThinkingStep("result", "↴ " + String(data.result).slice(0, 300));
+        } else if (data.type === "turn_changes") {
+          renderChangesCard(data);
+        } else if (data.type === "undo_result") {
+          showUndoResult(data);
         } else if (data.type === "todos") {
           renderTodos(data.items || []);
         } else if (data.type === "token_stats") {
