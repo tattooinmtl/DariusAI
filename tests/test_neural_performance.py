@@ -76,3 +76,31 @@ def test_layout_is_remembered_between_launches():
 def test_graph_poll_is_a_slow_safety_net():
     assert "setInterval(refreshSoon, 60000)" in PAGE
     assert "setInterval(refreshSoon, 10000)" not in PAGE
+
+
+def test_layout_physics_runs_in_a_worker_with_a_fallback():
+    nv = _neural_view()
+    assert "function layoutWorkerMain()" in nv
+    assert 'new Worker(URL.createObjectURL(new Blob(' in nv
+    assert "if (layoutWorker) return;              // the worker does the physics" in nv
+    # pinned (dragged) nodes are owned by the page, not overwritten by the worker
+    assert "nd.fx != null) continue;   // pinned: the page owns it" in nv
+    assert "function pinInLayout(" in nv and "function unpinInLayout(" in nv
+
+
+def test_graph_fetch_is_conditional(tmp_path):
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+    from fastapi.testclient import TestClient
+    from dariusai.viz.server import create_app
+
+    app = create_app(tmp_path / "brain", project_dir=tmp_path)
+    client = TestClient(app)
+    first = client.get("/api/graph")
+    etag = first.headers["etag"]
+    assert first.status_code == 200 and first.json()["nodes"]
+    unchanged = client.get("/api/graph", headers={"If-None-Match": etag})
+    assert unchanged.status_code == 304 and unchanged.content == b""
+    app.state.store.touch_usage("brain-coordinator")      # node sizes changed
+    assert client.get("/api/graph", headers={"If-None-Match": etag}).status_code == 200
+    assert '"If-None-Match": graphEtag' in PAGE

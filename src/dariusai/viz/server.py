@@ -20,7 +20,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -454,8 +454,11 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
         }
 
     @app.get("/api/graph")
-    def get_graph():
-        return store.to_graph_payload()
+    def get_graph(request: Request):
+        etag = f'"g{store.graph_version}"'
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers={"ETag": etag})
+        return JSONResponse(store.to_graph_payload(), headers={"ETag": etag, "Cache-Control": "no-cache"})
 
     @app.get("/api/search")
     def search(q: str = "", limit: int = 10):

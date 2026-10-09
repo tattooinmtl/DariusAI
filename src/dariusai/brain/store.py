@@ -120,6 +120,10 @@ class BrainStore:
         self.conn.commit()
         self.fts_enabled = self._init_fts()
         self.graph = BrainGraph()
+        # Bumped on every change the graph view can see (structure or a
+        # usage count). /api/graph serves it as an ETag, so an unchanged
+        # graph costs the page a 304 instead of the whole payload.
+        self.graph_version = 0
         self._load_graph()
 
     # ---- internal -----------------------------------------------------
@@ -192,6 +196,7 @@ class BrainStore:
 
         edge_rows = list(self.conn.execute("SELECT source, target, kind FROM edges"))
         self.graph.load_from_rows(node_rows, edge_rows)
+        self.graph_version += 1
 
     # ---- writes ---------------------------------------------------------
 
@@ -270,6 +275,7 @@ class BrainStore:
         if node_id in self.graph.graph:
             data = self.graph.graph.nodes[node_id]
             data["usage_count"] = int(data.get("usage_count") or 0) + 1
+            self.graph_version += 1
 
     # ---- reads ------------------------------------------------------------
 

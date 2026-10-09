@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- The app version this page was built with; tools/bump_version.py keeps it in step. -->
-<meta name="dariusai-version" content="0.99.0a0">
+<meta name="dariusai-version" content="0.99.1a0">
 <title>DariusAI</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="stylesheet" href="/vendor/codemirror/codemirror.min.css">
@@ -2184,7 +2184,132 @@
       if (n && known / n > 0.8) alpha = 0.12;
     }
 
+    // ---- layout worker ---------------------------------------------------
+    // The force layout compares every node with every other (O(n^2)) each
+    // step until it settles. On a slow PC that kept the main thread 67% busy
+    // with 200 ms stalls while the brain settled, and the whole window froze
+    // with it. It now runs in a Web Worker: the page sends positions, links
+    // and pinned nodes, the worker steps and posts positions back. Same
+    // physics as tick() below, which stays as the fallback.
+    function layoutWorkerMain() {
+      var n = 0, X, Y, Z, VX, VY, VZ, FIX, E, EK, alpha = 0, timer = null;
+      var DECAY = 0.975, MIN = 0.006, REPULSE = 1500;
+      function step() {
+        var i, j, dx, dy, dz, d2, d, f, fx, fy, fz;
+        for (i = 0; i < n; i++) {
+          if (FIX[i]) continue;
+          fx = 0; fy = 0; fz = 0;
+          for (j = 0; j < n; j++) {
+            if (i === j) continue;
+            dx = X[i] - X[j]; dy = Y[i] - Y[j]; dz = Z[i] - Z[j];
+            d2 = dx * dx + dy * dy + dz * dz + 0.01;
+            if (d2 > 200000) continue;
+            d = Math.sqrt(d2); f = REPULSE / d2;
+            fx += (dx / d) * f; fy += (dy / d) * f; fz += (dz / d) * f;
+          }
+          fx += -X[i] * 0.0018; fy += -Y[i] * 0.0018; fz += -Z[i] * 0.0018;
+          VX[i] = (VX[i] + fx * alpha) * 0.86; VY[i] = (VY[i] + fy * alpha) * 0.86; VZ[i] = (VZ[i] + fz * alpha) * 0.86;
+        }
+        for (var k = 0; k < E.length; k += 2) {
+          var a = E[k], b = E[k + 1], idx = EK[k >> 1];
+          var target = idx ? 170 : 95, strength = idx ? 0.035 : 0.05;
+          dx = X[b] - X[a]; dy = Y[b] - Y[a]; dz = Z[b] - Z[a];
+          var d3 = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+          var diff = (d3 - target) * strength * alpha, ux = dx / d3, uy = dy / d3, uz = dz / d3;
+          if (!FIX[a]) { VX[a] += ux * diff; VY[a] += uy * diff; VZ[a] += uz * diff; }
+          if (!FIX[b]) { VX[b] -= ux * diff; VY[b] -= uy * diff; VZ[b] -= uz * diff; }
+        }
+        for (i = 0; i < n; i++) {
+          if (FIX[i]) continue;
+          X[i] += VX[i]; Y[i] += VY[i]; Z[i] += VZ[i];
+        }
+        alpha *= DECAY;
+      }
+      function loop() {
+        timer = null;
+        if (alpha < MIN) { postMessage({ type: "settled" }); return; }
+        step();
+        var buf = new Float32Array(n * 3);
+        for (var i = 0; i < n; i++) { buf[i * 3] = X[i]; buf[i * 3 + 1] = Y[i]; buf[i * 3 + 2] = Z[i]; }
+        postMessage({ type: "pos", pos: buf, alpha: alpha }, [buf.buffer]);
+        timer = setTimeout(loop, 16);
+      }
+      function run() { if (!timer) timer = setTimeout(loop, 0); }
+      onmessage = function (ev) {
+        var m = ev.data;
+        if (m.type === "init") {
+          n = m.n;
+          X = new Float64Array(n); Y = new Float64Array(n); Z = new Float64Array(n);
+          VX = new Float64Array(n); VY = new Float64Array(n); VZ = new Float64Array(n);
+          for (var i = 0; i < n; i++) { X[i] = m.pos[i * 3]; Y[i] = m.pos[i * 3 + 1]; Z[i] = m.pos[i * 3 + 2]; }
+          FIX = new Uint8Array(m.fixed); E = new Int32Array(m.edges); EK = new Uint8Array(m.kinds);
+          alpha = m.alpha;
+          run();
+        } else if (m.type === "pin") {
+          FIX[m.i] = 1; X[m.i] = m.x; Y[m.i] = m.y; Z[m.i] = m.z; VX[m.i] = VY[m.i] = VZ[m.i] = 0;
+          if (m.reheat) { alpha = Math.max(alpha, m.reheat); run(); }
+        } else if (m.type === "unpin") {
+          FIX[m.i] = 0;
+        }
+      };
+    }
+    var layoutWorker = null, workerIds = [], workerIndex = new Map(), layoutStarted = false;
+    try {
+      layoutWorker = new Worker(URL.createObjectURL(new Blob(
+        ["(" + layoutWorkerMain.toString() + ")();"], { type: "text/javascript" })));
+      layoutWorker.onmessage = function (ev) {
+        var m = ev.data;
+        if (m.type === "pos") {
+          var pos = m.pos;
+          for (var i = 0; i < workerIds.length; i++) {
+            var nd = nodes[i];
+            if (!nd || nd.id !== workerIds[i] || nd.fx != null) continue;   // pinned: the page owns it
+            nd.x = pos[i * 3]; nd.y = pos[i * 3 + 1]; nd.z = pos[i * 3 + 2];
+          }
+          alpha = m.alpha;
+          kick();
+        } else if (m.type === "settled") {
+          alpha = 0;
+          savePositions();
+          kick();
+        }
+      };
+      layoutWorker.onerror = function () { layoutWorker = null; };   // fall back to tick()
+    } catch (e) {
+      layoutWorker = null;
+    }
+    // Hand the worker the current graph: positions, links, pinned nodes.
+    function syncLayout() {
+      if (!layoutWorker || !layoutStarted) return;
+      workerIds = nodes.map(function (nd) { return nd.id; });
+      workerIndex = new Map(workerIds.map(function (id, i) { return [id, i]; }));
+      var pos = new Float32Array(nodes.length * 3), fixed = new Uint8Array(nodes.length);
+      nodes.forEach(function (nd, i) {
+        var pinned = nd.fx != null;
+        pos[i * 3] = pinned ? nd.fx : nd.x; pos[i * 3 + 1] = pinned ? nd.fy : nd.y; pos[i * 3 + 2] = pinned ? nd.fz : nd.z;
+        fixed[i] = pinned ? 1 : 0;
+      });
+      var pairs = [], kinds = [];
+      edges.forEach(function (e) {
+        var a = workerIndex.get(e.source), b = workerIndex.get(e.target);
+        if (a === undefined || b === undefined) return;
+        pairs.push(a, b); kinds.push(e.kind === "index" ? 1 : 0);
+      });
+      layoutWorker.postMessage({ type: "init", n: nodes.length, pos: pos, fixed: fixed, edges: pairs, kinds: kinds, alpha: alpha });
+    }
+    function pinInLayout(nd, reheat) {
+      if (!layoutWorker) return;
+      var i = workerIndex.get(nd.id);
+      if (i !== undefined) layoutWorker.postMessage({ type: "pin", i: i, x: nd.fx, y: nd.fy, z: nd.fz, reheat: reheat || 0 });
+    }
+    function unpinInLayout(nd) {
+      if (!layoutWorker) return;
+      var i = workerIndex.get(nd.id);
+      if (i !== undefined) layoutWorker.postMessage({ type: "unpin", i: i });
+    }
+
     function tick() {
+      if (layoutWorker) return;              // the worker does the physics
       if (alpha < ALPHA_MIN) return;
       var REPULSE = 1500;
       for (var i = 0; i < nodes.length; i++) {
@@ -2803,6 +2928,7 @@
         dragNodeDepth = p ? p.depth : cam.dist;
         n.fx = n.x; n.fy = n.y; n.fz = n.z;
         alpha = Math.max(alpha, 0.3);
+        pinInLayout(n, 0.3);
       } else if (ev.button === 2 || ev.shiftKey) {
         panning = true; canvas.classList.add("dragging");
       } else {
@@ -2819,6 +2945,8 @@
         var scale = dragNodeDepth / FOCAL;
         var d = invRotate(dx * scale, dy * scale, 0);
         dragNode.fx += d[0]; dragNode.fy += d[1]; dragNode.fz += d[2];
+        dragNode.x = dragNode.fx; dragNode.y = dragNode.fy; dragNode.z = dragNode.fz;   // follows the mouse now
+        pinInLayout(dragNode, 0.1);
       } else if (rotating) {
         cam.yaw += dx * 0.0055;
         cam.pitch = Math.max(-1.45, Math.min(1.45, cam.pitch + dy * 0.0055));
@@ -2840,7 +2968,7 @@
       }
     });
     window.addEventListener("mouseup", function () {
-      if (dragNode) { dragNode.fx = null; dragNode.fy = null; dragNode.fz = null; dragNode = null; }
+      if (dragNode) { unpinInLayout(dragNode); dragNode.fx = null; dragNode.fy = null; dragNode.fz = null; dragNode = null; }
       rotating = false; panning = false;
       canvas.classList.remove("dragging");
     });
@@ -2848,7 +2976,7 @@
     canvas.addEventListener("dblclick", function (ev) {
       var rect = canvas.getBoundingClientRect();
       var n = pickNode(ev.clientX - rect.left, ev.clientY - rect.top);
-      if (n) { n.fx = null; n.fy = null; n.fz = null; }
+      if (n) { unpinInLayout(n); n.fx = null; n.fy = null; n.fz = null; kick(); }
     });
     canvas.addEventListener("click", function (ev) {
       if (Math.hypot(ev.clientX - lastMouse[0], ev.clientY - lastMouse[1]) > 3) return;
@@ -2925,8 +3053,18 @@
         "<span style='color:#5b6289'>drag to rotate · shift/right-drag to pan · scroll to zoom</span>";
     }
 
+    // Conditional: the page sends the version it has and the server answers
+    // 304 (no body) when the graph hasn't changed, instead of 114 KB of JSON
+    // to parse and walk for nothing.
+    var graphEtag = null, lastEdgeCount = -1;
     function refreshGraph() {
-      return fetch("/api/graph").then(function (r) { return r.json(); }).then(function (graph) {
+      var headers = graphEtag ? { "If-None-Match": graphEtag } : {};
+      return fetch("/api/graph", { headers: headers, cache: "no-store" }).then(function (r) {
+        if (r.status === 304) return null;
+        graphEtag = r.headers.get("ETag");
+        return r.json();
+      }).then(function (graph) {
+        if (!graph) return null;          // unchanged
         var added = 0;
         graph.nodes.forEach(function (n) {
           var existing = byId.get(n.id);
@@ -2944,7 +3082,8 @@
         // Drop nodes the server no longer has (deleted skills), or they
         // linger as ghosts that pulses still try to reach.
         var live = new Set(graph.nodes.map(function (n) { return n.id; }));
-        if (live.size !== nodes.length) {
+        var removed = live.size !== nodes.length;
+        if (removed) {
           nodes = nodes.filter(function (n) {
             if (live.has(n.id)) return true;
             byId.delete(n.id);
@@ -2958,6 +3097,8 @@
         // Reheating on every 10 s poll kept the O(n²) physics running about
         // 40% of the time on an unchanged graph.
         if (added) alpha = Math.max(alpha, 0.3);
+        if (added || removed || graph.edges.length !== lastEdgeCount) syncLayout();
+        lastEdgeCount = graph.edges.length;
         kick();
         return graph;
       });
@@ -3210,6 +3351,8 @@
 
     function start() {
       initPositions();
+      layoutStarted = true;
+      syncLayout();
       loop();
       connectEvents();
       setInterval(refreshSoon, 60000);   // a safety net: graph changes arrive as events
