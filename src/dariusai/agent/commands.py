@@ -790,7 +790,7 @@ def _cmd_tools(ctx: CommandContext, args: list) -> CommandResult:
     # The session's own brain. This used to open a throwaway BrainStore at
     # ./.dariusai-bogus — relative to wherever the app was launched — and
     # wrote a database and a note per tool into that folder every time.
-    reg = build_tool_registry(ctx.store, sandbox=None)
+    reg = build_tool_registry(ctx.store, sandbox=None, register_nodes=False)
     items = [
         {"label": name, "summary": spec.description}
         for name, spec in reg.specs.items()

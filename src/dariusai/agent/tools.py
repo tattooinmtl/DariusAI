@@ -133,7 +133,8 @@ def _ensure_tool_node(store: BrainStore, spec: ToolSpec) -> None:
 
 def _register(reg: ToolRegistry, store: BrainStore, spec: ToolSpec) -> None:
     reg.register(spec)
-    _ensure_tool_node(store, spec)
+    if getattr(reg, "register_nodes", True):
+        _ensure_tool_node(store, spec)
 
 
 # ---- tool implementations --------------------------------------------------
@@ -632,7 +633,8 @@ def _learn_skill(
     return f"saved skill {skill.id!r} ({len(skill.sources)} sources) into the brain."
 
 
-def build_tool_registry(store: BrainStore, sandbox: Sandbox | None = None, on_event: Callable[[dict[str, Any]], None] | None = None) -> ToolRegistry:
+def build_tool_registry(store: BrainStore, sandbox: Sandbox | None = None, on_event: Callable[[dict[str, Any]], None] | None = None,
+                        register_nodes: bool = True) -> ToolRegistry:
     """`sandbox` bounds every filesystem and shell tool. It defaults to
     Sandbox.unrestricted() only so existing callers keep working; every
     production entry point passes a real one rooted at the project
@@ -644,6 +646,9 @@ def build_tool_registry(store: BrainStore, sandbox: Sandbox | None = None, on_ev
     reg = ToolRegistry()
     reg.on_event = on_event
     reg.sandbox = sandbox
+    # False for callers that only want the list (the /tools command): no
+    # tool nodes are created or updated in the brain.
+    reg.register_nodes = register_nodes
     _register(reg, store, ToolSpec(
         name="read_file",
         description="Read a text file's contents.",

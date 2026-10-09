@@ -684,6 +684,162 @@
   .np-line.ok { color: #6ee7b7; }
   .np-line.err { color: #f87171; }
   .np-line.dim { color: #5b6289; }
+  /* ===== Darius — the app's own animated robot and brain icon ===========
+     Pure SVG + CSS, no images. Every mood is a data-mood value; each part
+     is shown or animated by CSS alone, so a mood change is one attribute. */
+  .db { display: inline-block; width: 44px; height: 44px; overflow: visible; vertical-align: middle; flex: none; }
+  .db svg { width: 100%; height: 100%; overflow: visible; }
+  .db .db-bot, .db .db-bulb, .db .e, .db .m-o, .db .db-hand, .db .db-gearspin, .db .db-page, .db .db-bulbacc,
+  .db .acc-spark path, .db .db-wavehand, .db .db-checkpop, .db .acc-thought circle { transform-box: fill-box; }
+  .db .db-head { fill: #1b2140; stroke: #8fb4ff; stroke-width: 1.6; }
+  .db .db-shine { fill: rgba(255,255,255,0.10); }
+  .db .db-ear { fill: #2a3260; stroke: #8fb4ff; stroke-width: 1.2; }
+  .db .db-visor { fill: #050a18; stroke: rgba(125,211,252,0.35); stroke-width: 1; }
+  .db .db-ant { stroke: #8fb4ff; stroke-width: 1.6; stroke-linecap: round; }
+  .db .db-bulb { fill: #6ee7b7; filter: drop-shadow(0 0 2px #6ee7b7); transform-origin: center; animation: db-glow 2.8s ease-in-out infinite; }
+  .db .db-eye { fill: #7dd3fc; filter: drop-shadow(0 0 1.5px #7dd3fc); }
+  .db .db-eye-line { fill: none; stroke: #7dd3fc; stroke-width: 2.2; stroke-linecap: round; filter: drop-shadow(0 0 1.5px #7dd3fc); }
+  .db .db-pupil { fill: #050a18; }
+  .db .db-mouth { fill: none; stroke: #7dd3fc; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .db .db-mouth-fill { fill: #7dd3fc; stroke: none; }
+  .db .db-cheek { fill: #f472b6; opacity: 0.55; }
+  .db .db-acc-ink { fill: none; stroke: #c7d2fe; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+  .db .db-acc-fill { fill: #2a3260; stroke: #8fb4ff; stroke-width: 1.1; }
+  .db .db-key { fill: #3a4478; }
+  .db .db-hand { fill: #8fb4ff; }
+  .db .db-gear { fill: #8b93b8; }
+  .db .db-spark { fill: #fde68a; }
+  .db .db-bulbacc { fill: #fde68a; filter: drop-shadow(0 0 3px #fde68a); }
+  .db .db-drop { fill: #7dd3fc; }
+  .db .db-txt { fill: #c7d2fe; font: 700 9px/1 Consolas, monospace; }
+  .db .db-check { fill: #6ee7b7; }
+
+  /* everything optional starts hidden; moods switch parts on */
+  .db .e, .db .m, .db .acc, .db .db-cheek { display: none; }
+
+  /* --- eyes / mouth per mood --- */
+  .db[data-mood="idle"] .e-open, .db[data-mood="talking"] .e-open, .db[data-mood="listening"] .e-down,
+  .db[data-mood="confused"] .e-open, .db[data-mood="sorry"] .e-sad,
+  .db[data-mood="happy"] .e-happy, .db[data-mood="greeting"] .e-happy, .db[data-mood="proud"] .e-happy,
+  .db[data-mood="learning"] .e-happy,
+  .db[data-mood="thinking"] .e-think,
+  .db[data-mood="coding"] .e-focus, .db[data-mood="running"] .e-focus, .db[data-mood="reading"] .e-down,
+  .db[data-mood="searching"] .e-wide, .db[data-mood="curious"] .e-wide,
+  .db[data-mood="error"] .e-x, .db[data-mood="sleeping"] .e-sleep { display: inline; }
+
+  .db[data-mood="idle"] .m-smile, .db[data-mood="listening"] .m-smile, .db[data-mood="reading"] .m-smile,
+  .db[data-mood="greeting"] .m-smile, .db[data-mood="curious"] .m-smile,
+  .db[data-mood="happy"] .m-grin, .db[data-mood="proud"] .m-grin, .db[data-mood="learning"] .m-grin,
+  .db[data-mood="thinking"] .m-side, .db[data-mood="coding"] .m-flat, .db[data-mood="running"] .m-flat,
+  .db[data-mood="sleeping"] .m-flat,
+  .db[data-mood="searching"] .m-o, .db[data-mood="talking"] .m-o,
+  .db[data-mood="confused"] .m-wavy, .db[data-mood="error"] .m-frown, .db[data-mood="sorry"] .m-frown { display: inline; }
+
+  .db[data-mood="happy"] .db-cheek, .db[data-mood="greeting"] .db-cheek,
+  .db[data-mood="proud"] .db-cheek, .db[data-mood="learning"] .db-cheek { display: inline; }
+
+  /* --- props per mood --- */
+  .db[data-mood="thinking"] .acc-thought, .db[data-mood="coding"] .acc-kb, .db[data-mood="running"] .acc-gear,
+  .db[data-mood="searching"] .acc-mag, .db[data-mood="reading"] .acc-book, .db[data-mood="learning"] .acc-bulb,
+  .db[data-mood="happy"] .acc-spark, .db[data-mood="proud"] .acc-spark, .db[data-mood="learning"] .acc-spark,
+  .db[data-mood="proud"] .acc-check, .db[data-mood="greeting"] .acc-wave, .db[data-mood="curious"] .acc-q,
+  .db[data-mood="confused"] .acc-drop, .db[data-mood="error"] .acc-drop, .db[data-mood="sorry"] .acc-drop,
+  .db[data-mood="sleeping"] .acc-z { display: inline; }
+
+  /* --- motion --- */
+  .db .db-bot { transform-origin: 50% 90%; animation: db-float 4s ease-in-out infinite; }
+  .db[data-mood="thinking"] .db-bot, .db[data-mood="confused"] .db-bot, .db[data-mood="curious"] .db-bot { animation: db-tilt 2.4s ease-in-out infinite; }
+  .db[data-mood="coding"] .db-bot, .db[data-mood="running"] .db-bot { animation: db-nod 0.5s ease-in-out infinite; }
+  .db[data-mood="happy"] .db-bot, .db[data-mood="proud"] .db-bot { animation: db-hop 0.9s ease-in-out 2; }
+  .db[data-mood="error"] .db-bot { animation: db-shake 0.35s ease-in-out 3; }
+  .db[data-mood="sleeping"] .db-bot { animation: db-float 6s ease-in-out infinite; }
+  .db .e-open, .db .e-down, .db .e-wide { transform-origin: center; animation: db-blink 4.6s infinite; }
+  .db[data-mood="thinking"] .db-bulb, .db[data-mood="coding"] .db-bulb, .db[data-mood="running"] .db-bulb,
+  .db[data-mood="searching"] .db-bulb, .db[data-mood="reading"] .db-bulb { animation: db-glow 0.6s ease-in-out infinite; }
+  .db[data-mood="error"] .db-bulb { fill: #f87171; filter: drop-shadow(0 0 2px #f87171); animation: db-flicker 0.5s steps(2) infinite; }
+  .db[data-mood="sleeping"] .db-bulb { fill: #3a4478; filter: none; animation: none; }
+  .db .m-o { transform-origin: center; }
+  .db[data-mood="talking"] .m-o { animation: db-talk 0.28s ease-in-out infinite alternate; }
+  .db .acc-thought circle { animation: db-bubble 1.5s ease-in-out infinite; }
+  .db .acc-thought circle:nth-child(2) { animation-delay: 0.25s; }
+  .db .acc-thought circle:nth-child(3) { animation-delay: 0.5s; }
+  .db .db-key { animation: db-key 1.1s steps(1) infinite; }
+  .db .db-hand { transform-origin: center; animation: db-tap 0.22s ease-in-out infinite alternate; }
+  .db .db-hand + .db-hand { animation-delay: 0.11s; }
+  .db .acc-gear .db-gearspin { transform-origin: center; animation: db-spin 1.4s linear infinite; }
+  .db .db-magsweep { animation: db-sweep 1.6s ease-in-out infinite; }
+  .db .db-page { transform-origin: 0% 50%; animation: db-flip 1.2s ease-in-out infinite; }
+  .db .db-bulbacc { transform-origin: center; animation: db-glow 1.1s ease-in-out infinite; }
+  .db .acc-spark path { transform-origin: center; animation: db-twinkle 1.2s ease-in-out infinite; }
+  .db .acc-spark path:nth-child(2) { animation-delay: 0.4s; }
+  .db .acc-spark path:nth-child(3) { animation-delay: 0.8s; }
+  .db .db-wavehand { transform-origin: 20% 90%; animation: db-wave 0.5s ease-in-out infinite alternate; }
+  .db .acc-q { animation: db-bob 1.2s ease-in-out infinite; }
+  .db .acc-drop { animation: db-drip 1.6s ease-in infinite; }
+  .db .acc-z path { animation: db-zz 2.4s ease-out infinite; }
+  .db .acc-z path:nth-child(2) { animation-delay: 0.8s; }
+  .db .acc-z path:nth-child(3) { animation-delay: 1.6s; }
+  .db .db-checkpop { transform-origin: center; animation: db-pop 0.4s ease-out 1; }
+
+  @keyframes db-float { 50% { transform: translateY(-1.5px); } }
+  @keyframes db-tilt { 50% { transform: rotate(-6deg) translateY(-1px); } }
+  @keyframes db-nod { 50% { transform: translateY(0.8px); } }
+  @keyframes db-hop { 40% { transform: translateY(-4px); } 70% { transform: translateY(0); } }
+  @keyframes db-shake { 25% { transform: translateX(-2px); } 75% { transform: translateX(2px); } }
+  @keyframes db-blink { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(0.1); } }
+  @keyframes db-glow { 50% { opacity: 0.45; } }
+  @keyframes db-flicker { 50% { opacity: 0.2; } }
+  @keyframes db-talk { from { transform: scaleY(0.35); } to { transform: scaleY(1.1); } }
+  @keyframes db-bubble { 0%, 100% { opacity: 0.25; transform: translateY(1px); } 50% { opacity: 1; transform: translateY(-1px); } }
+  @keyframes db-key { 0%, 100% { fill: #3a4478; } 12% { fill: #7dd3fc; } }
+  @keyframes db-tap { to { transform: translateY(2px); } }
+  @keyframes db-spin { to { transform: rotate(360deg); } }
+  @keyframes db-sweep { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-6px, 2px); } }
+  @keyframes db-flip { 0%, 20% { transform: scaleX(1); } 60%, 100% { transform: scaleX(-1); } }
+  @keyframes db-twinkle { 0%, 100% { transform: scale(0.3); opacity: 0.2; } 50% { transform: scale(1); opacity: 1; } }
+  @keyframes db-wave { from { transform: rotate(-18deg); } to { transform: rotate(18deg); } }
+  @keyframes db-bob { 50% { transform: translateY(-2px); } }
+  @keyframes db-drip { 0% { transform: translateY(-2px); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateY(6px); opacity: 0; } }
+  @keyframes db-zz { 0% { transform: translate(0, 4px); opacity: 0; } 30% { opacity: 1; } 100% { transform: translate(6px, -8px); opacity: 0; } }
+  @keyframes db-pop { 0% { transform: scale(0); } 70% { transform: scale(1.25); } 100% { transform: scale(1); } }
+
+  /* ---- brain icon: dim at rest, flickers with lightning when the brain fires */
+  .dbrain { display: inline-block; width: 26px; height: 26px; flex: none; cursor: pointer; vertical-align: middle; }
+  .dbrain svg { width: 100%; height: 100%; overflow: visible; }
+  .dbrain .br-body { fill: #f4bec9; stroke: #b0607a; stroke-width: 1; opacity: 0.5; transition: opacity 0.3s; }
+  .dbrain .br-fold { fill: none; stroke: #b0607a; stroke-width: 1.1; stroke-linecap: round; opacity: 0.6; }
+  .dbrain .br-bolt { fill: #e0f2fe; stroke: #7dd3fc; stroke-width: 0.6; opacity: 0; filter: drop-shadow(0 0 2px #7dd3fc); }
+  .dbrain.zap .br-body, .dbrain.hot .br-body { opacity: 1; filter: drop-shadow(0 0 4px #f4bec9); }
+  .dbrain.zap svg { animation: br-flick 0.9s steps(1) 1; }
+  .dbrain.zap .br-bolt { animation: br-bolt 0.9s steps(1) 1; }
+  .dbrain.hot .br-bolt { animation: br-bolt 0.75s steps(1) infinite; }
+  .dbrain.hot .br-bolt:nth-of-type(2) { animation-duration: 0.93s; animation-delay: 0.2s; }
+  .dbrain.hot .br-bolt:nth-of-type(3) { animation-duration: 1.17s; animation-delay: 0.45s; }
+  .dbrain.hot svg { animation: br-flick 1.3s steps(1) infinite; }
+  @keyframes br-flick { 0% { filter: brightness(1); } 10% { filter: brightness(1.8); } 20% { filter: brightness(0.9); }
+                        35% { filter: brightness(1.6); } 50% { filter: brightness(1); } 70% { filter: brightness(1.4); } }
+  @keyframes br-bolt { 0%, 30%, 60% { opacity: 0; } 10%, 40% { opacity: 1; } 75% { opacity: 0.7; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .db *, .dbrain * , .dbrain svg { animation: none !important; }
+  }
+
+  /* Darius status bar at the top of the chat: robot, brain, what he's doing */
+  .darius-bar { display: flex; align-items: center; gap: 10px; padding: 6px 12px 6px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.06); background: linear-gradient(180deg, rgba(59,91,219,0.10), transparent); flex: none; }
+  .darius-bar .db { cursor: pointer; }
+  .darius-bar-text { min-width: 0; display: grid; line-height: 1.25; }
+  .darius-bar-name { font: 600 12px/1.3 -apple-system, "Segoe UI", system-ui, sans-serif; color: #dfe6ff; }
+  .darius-bar-state { font: 11px/1.35 ui-monospace, Consolas, monospace; color: #8b93b8;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .darius-bar[data-busy="1"] .darius-bar-state { color: #7dd3fc; }
+  .darius-bar-spacer { flex: 1; }
+  /* the little face that reacts under each answer */
+  .chat-reaction { display: flex; justify-content: flex-end; margin: 4px -4px -6px 0; }
+  .chat-reaction .db { cursor: pointer; opacity: 0.95; }
+  .chat-reaction .db:hover { filter: drop-shadow(0 0 6px rgba(125,211,252,0.6)); }
+  .chat-thinking-icon .db { margin: -6px -2px -6px -4px; }
+  .chat-welcome .mark .db { filter: drop-shadow(0 0 16px rgba(110,168,255,0.45)); }
 </style>
 </head>
 <body>
@@ -832,6 +988,178 @@
       onStatus: function (fn) { statusListeners.push(fn); fn(open); },
     };
   })();
+
+  // ===== DariusFace — the app's own robot, one SVG per instance ==========
+  // DariusFace.create(mood, sizePx) -> element with .setMood(m) / .mood.
+  // Moods: idle thinking coding running searching reading learning talking
+  //        listening happy greeting proud curious confused error sorry sleeping
+  var DariusFace = (function () {
+    var LABELS = {
+      idle: "ready", thinking: "thinking", coding: "writing code", running: "running a command",
+      searching: "searching the web", reading: "reading a skill", learning: "learning something new",
+      talking: "answering", listening: "listening", happy: "happy to help", greeting: "hello!",
+      proud: "code delivered", curious: "has a question", confused: "hmm, that didn't work",
+      error: "something broke", sorry: "couldn't do that", sleeping: "dozing — say something",
+    };
+    var SVG =
+      "<svg viewBox='-14 -8 92 82' aria-hidden='true'>" +
+      // thought bubbles (thinking)
+      "<g class='acc acc-thought'><circle cx='53' cy='9' r='1.8' class='db-eye'/><circle cx='58.5' cy='3.5' r='2.6' class='db-eye'/><circle cx='65.5' cy='-3' r='3.6' class='db-eye'/></g>" +
+      // bulb (learning)
+      "<g class='acc acc-bulb' transform='translate(58,-6)'><circle class='db-bulbacc' cx='5' cy='5' r='4.6'/><rect x='3' y='9.5' width='4' height='3' rx='1' class='db-acc-fill'/></g>" +
+      // question mark (curious)
+      "<g class='acc acc-q'><path class='db-acc-ink' style='stroke-width:2.2' d='M58.5 1.5 q0 -4 4 -4 q4 0 4 3.6 q0 2.4 -3.2 3.6 q-0.8 0.4 -0.8 2.2'/><circle class='db-spark' style='fill:#c7d2fe' cx='62.5' cy='10.4' r='1.2'/></g>" +
+      // zzz (sleeping)
+      "<g class='acc acc-z'><path class='db-acc-ink' d='M55 4 h4.5 l-4.5 5 h4.5'/><path class='db-acc-ink' d='M60.5 -3 h5.5 l-5.5 6 h5.5'/><path class='db-acc-ink' d='M67 -11 h6.5 l-6.5 7.5 h6.5'/></g>" +
+      // sparkles (happy / proud / learning)
+      "<g class='acc acc-spark'>" +
+        "<path class='db-spark' d='M-4 6 l1.2 3 3 1.2 -3 1.2 -1.2 3 -1.2 -3 -3 -1.2 3 -1.2z'/>" +
+        "<path class='db-spark' d='M64 22 l1 2.4 2.4 1 -2.4 1 -1 2.4 -1 -2.4 -2.4 -1 2.4 -1z'/>" +
+        "<path class='db-spark' d='M58 52 l0.9 2.1 2.1 0.9 -2.1 0.9 -0.9 2.1 -0.9 -2.1 -2.1 -0.9 2.1 -0.9z'/>" +
+      "</g>" +
+      "<g class='db-bot'>" +
+        "<line class='db-ant' x1='32' y1='10' x2='32' y2='3.5'/><circle class='db-bulb' cx='32' cy='2.5' r='3'/>" +
+        "<rect class='db-ear' x='4.5' y='23' width='6.5' height='14' rx='2.6'/><rect class='db-ear' x='53' y='23' width='6.5' height='14' rx='2.6'/>" +
+        "<rect class='db-head' x='9' y='9' width='46' height='40' rx='13'/>" +
+        "<path class='db-shine' d='M15 13 h22 a3 3 0 0 1 0 4 h-22 a3 3 0 0 1 0 -4z'/>" +
+        "<rect class='db-visor' x='14' y='18' width='36' height='25' rx='9'/>" +
+        // eyes
+        "<g class='e e-open'><ellipse class='db-eye' cx='24' cy='29' rx='3.4' ry='4.2'/><ellipse class='db-eye' cx='40' cy='29' rx='3.4' ry='4.2'/></g>" +
+        "<g class='e e-down'><ellipse class='db-eye' cx='24' cy='31' rx='3.4' ry='3.4'/><ellipse class='db-eye' cx='40' cy='31' rx='3.4' ry='3.4'/></g>" +
+        "<g class='e e-wide'><circle class='db-eye' cx='24' cy='29' r='4.6'/><circle class='db-eye' cx='40' cy='29' r='4.6'/><circle class='db-pupil' cx='25' cy='28' r='1.6'/><circle class='db-pupil' cx='41' cy='28' r='1.6'/></g>" +
+        "<g class='e e-happy'><path class='db-eye-line' d='M20.5 30.5 Q24 25 27.5 30.5'/><path class='db-eye-line' d='M36.5 30.5 Q40 25 43.5 30.5'/></g>" +
+        "<g class='e e-focus'><rect class='db-eye' x='20.3' y='27.6' width='7.4' height='3' rx='1.5'/><rect class='db-eye' x='36.3' y='27.6' width='7.4' height='3' rx='1.5'/></g>" +
+        "<g class='e e-think'><ellipse class='db-eye' cx='24.5' cy='27.5' rx='3' ry='3.8'/><path class='db-eye-line' d='M36.5 28.5 h7'/></g>" +
+        "<g class='e e-sad'><ellipse class='db-eye' cx='24' cy='30' rx='3' ry='3.4'/><ellipse class='db-eye' cx='40' cy='30' rx='3' ry='3.4'/><path class='db-eye-line' d='M20 26 l7 -2.4'/><path class='db-eye-line' d='M44 26 l-7 -2.4'/></g>" +
+        "<g class='e e-x'><path class='db-eye-line' d='M21 26 l6 6 M27 26 l-6 6'/><path class='db-eye-line' d='M37 26 l6 6 M43 26 l-6 6'/></g>" +
+        "<g class='e e-sleep'><path class='db-eye-line' d='M20.5 30 q3.5 2.6 7 0'/><path class='db-eye-line' d='M36.5 30 q3.5 2.6 7 0'/></g>" +
+        // cheeks + mouths
+        "<circle class='db-cheek' cx='18.5' cy='36' r='2.4'/><circle class='db-cheek' cx='45.5' cy='36' r='2.4'/>" +
+        "<path class='m m-smile db-mouth' d='M27 36.5 Q32 40.5 37 36.5'/>" +
+        "<path class='m m-grin db-mouth-fill' d='M25.5 35.5 Q32 42.5 38.5 35.5 Z'/>" +
+        "<path class='m m-flat db-mouth' d='M27.5 37.5 h9'/>" +
+        "<path class='m m-side db-mouth' d='M28 38 q4 -1.5 8 -2.2'/>" +
+        "<ellipse class='m m-o db-mouth-fill' cx='32' cy='37.5' rx='2.6' ry='2.4'/>" +
+        "<path class='m m-wavy db-mouth' d='M25.5 37.5 q2 -2 4 0 t4 0 t4 0 t3 0'/>" +
+        "<path class='m m-frown db-mouth' d='M27 39.5 Q32 35 37 39.5'/>" +
+      "</g>" +
+      // keyboard + tapping hands, under and to the left (coding)
+      "<g class='acc acc-kb' transform='translate(-13,51)'>" +
+        "<rect class='db-acc-fill' x='0' y='0' width='36' height='14' rx='3'/>" +
+        (function () {
+          var keys = "", d = 0;
+          for (var r = 0; r < 3; r++) for (var c = 0; c < 7; c++) {
+            d = ((r * 7 + c) * 37) % 11;     // scrambled delays read as real typing
+            keys += "<rect class='db-key' x='" + (2.4 + c * 4.6) + "' y='" + (2 + r * 3.8) + "' width='3.6' height='2.8' rx='0.7' style='animation-delay:" + (d / 10) + "s'/>";
+          }
+          return keys;
+        })() +
+        "<rect class='db-hand' x='8' y='-3.5' width='6' height='4.5' rx='2'/><rect class='db-hand' x='21' y='-3.5' width='6' height='4.5' rx='2'/>" +
+      "</g>" +
+      // gear (running) — one path, so no per-tooth transforms
+      "<g class='acc acc-gear' transform='translate(50,46)'><g class='db-gearspin'>" +
+        "<path class='db-gear' d='" + (function () {
+          var p = "", n = 8, R = 8, r = 6;
+          for (var i = 0; i < n * 2; i++) {
+            var a0 = (i / (n * 2)) * Math.PI * 2, a1 = ((i + 1) / (n * 2)) * Math.PI * 2, rad = i % 2 ? r : R;
+            p += (i ? "L" : "M") + (8 + rad * Math.cos(a0)).toFixed(2) + " " + (8 + rad * Math.sin(a0)).toFixed(2) +
+                 "L" + (8 + rad * Math.cos(a1)).toFixed(2) + " " + (8 + rad * Math.sin(a1)).toFixed(2);
+          }
+          return p + "Z";
+        })() + "'/>" +
+        "<circle class='db-visor' cx='8' cy='8' r='2.6'/>" +
+      "</g></g>" +
+      // magnifier (searching)
+      "<g class='acc acc-mag' transform='translate(46,42)'><g class='db-magsweep'><circle class='db-acc-ink' cx='7' cy='7' r='5.5' style='fill:rgba(125,211,252,0.15)'/><path class='db-acc-ink' d='M11 11 l6 6' style='stroke-width:2.6'/></g></g>" +
+      // open book with a turning page (reading)
+      "<g class='acc acc-book' transform='translate(-12,52)'>" +
+        "<path class='db-acc-fill' d='M0 2 Q8 -1 15 2 V14 Q8 11 0 14 Z'/><path class='db-acc-fill' d='M15 2 Q22 -1 30 2 V14 Q22 11 15 14 Z'/>" +
+        "<path class='db-acc-ink' d='M3 5 h8 M3 8 h8 M19 5 h8 M19 8 h8' style='stroke-width:0.8'/>" +
+        "<path class='db-page db-acc-fill' d='M15 2 Q22 -1 29 2 V13 Q22 10 15 13 Z' style='fill:#3a4478'/>" +
+      "</g>" +
+      // waving hand (greeting)
+      "<g class='acc acc-wave' transform='translate(58,24)'><g class='db-wavehand'><rect class='db-hand' x='0' y='0' width='8' height='10' rx='3.5'/><rect class='db-hand' x='1' y='-4' width='2' height='5' rx='1'/><rect class='db-hand' x='4' y='-5' width='2' height='6' rx='1'/></g></g>" +
+      // sweat drop (confused / error / sorry)
+      "<g class='acc acc-drop'><path class='db-drop' d='M56 14 q3 4.5 0 6.5 q-3 -2 0 -6.5z'/></g>" +
+      // check badge (proud)
+      "<g class='acc acc-check' transform='translate(50,44)'><g class='db-checkpop'><circle class='db-check' cx='7' cy='7' r='6.5'/><path d='M3.8 7.2 l2.2 2.3 4.4 -4.6' fill='none' stroke='#05060f' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/></g></g>" +
+      "</svg>";
+
+    function create(mood, size) {
+      var el = document.createElement("span");
+      el.className = "db";
+      if (size) { el.style.width = size + "px"; el.style.height = size + "px"; }
+      el.innerHTML = SVG;
+      el.setMood = function (m) {
+        m = LABELS[m] ? m : "idle";
+        if (el.mood === m) return el;
+        el.mood = m;
+        el.setAttribute("data-mood", m);
+        el.title = "Darius — " + LABELS[m];
+        return el;
+      };
+      el.setMood(mood || "idle");
+      return el;
+    }
+
+    // What the finished reply was like, for the little face under it.
+    function reactionFor(answer, userText, turn) {
+      var a = String(answer || ""), u = String(userText || "");
+      if (turn && turn.error) return "sorry";
+      if (/\b(sorry|can't|cannot|unable|couldn't|failed)\b/i.test(a.slice(0, 240))) return "sorry";
+      if ((turn && turn.wroteCode) || /```/.test(a)) return "proud";
+      if (/^\s*(hi|hey|hello|yo|salut|bonjour|good (morning|evening|afternoon))\b/i.test(u)) return "greeting";
+      if (/\?\s*$/.test(a.trim())) return "curious";
+      if (turn && turn.learned) return "learning";
+      return "happy";
+    }
+
+    // Which mood a tool call puts Darius in.
+    var TOOL_MOODS = {
+      write_file: "coding", create_project: "coding", edit_file: "coding",
+      run_shell: "running",
+      web_research: "searching",
+      skill_lookup: "reading", invoke_skill: "reading", load_skill: "reading",
+      search_brain: "reading", browse_brain: "reading", read_file: "reading", list_dir: "reading",
+      learn_skill: "learning",
+      request_external_read: "curious", set_todos: "thinking",
+      current_project: "reading", list_projects: "reading", project_types: "reading",
+    };
+    function moodForTool(name) {
+      if (TOOL_MOODS[name]) return TOOL_MOODS[name];
+      if (/^(game3d|blender)/.test(name || "")) return "coding";
+      return "running";
+    }
+
+    return { create: create, reactionFor: reactionFor, moodForTool: moodForTool, LABELS: LABELS };
+  })();
+
+  // ===== DariusBrain — the little brain that flickers when the real one fires
+  var DariusBrain = (function () {
+    var SVG =
+      "<svg viewBox='0 0 32 32' aria-hidden='true'>" +
+      "<path class='br-body' d='M16 5.5c-1.6-1.6-4.6-1.8-6.3-.2-2.4-.4-4.6 1.6-4.4 4-1.9 1-2.6 3.4-1.6 5.2-1.2 1.7-.9 4.2.8 5.4-.1 2.4 2 4.4 4.4 4.2 1.3 1.8 4 2.3 5.8 1.1l1.3-.8 1.3.8c1.8 1.2 4.5.7 5.8-1.1 2.4.2 4.5-1.8 4.4-4.2 1.7-1.2 2-3.7.8-5.4 1-1.8.3-4.2-1.6-5.2.2-2.4-2-4.4-4.4-4-1.7-1.6-4.7-1.4-6.3.2z'/>" +
+      "<path class='br-fold' d='M16 6v19.5M10 10c2 .6 2.6 2.4 2 4M8 16.5c2-.4 3.6.6 4 2.4M22 10c-2 .6-2.6 2.4-2 4M24 16.5c-2-.4-3.6.6-4 2.4M11 22c1.2-1.2 3-1.4 4.4-.6M21 22c-1.2-1.2-3-1.4-4.4-.6'/>" +
+      "<path class='br-bolt' d='M6 2 l3.5 4.2 -2 .5 3 4.3 -5.2-4.6 2.2-.4z'/>" +
+      "<path class='br-bolt' d='M27 3 l-2.6 4.8 2 .2 -3.6 4 4.2-5.4 -2-.2z'/>" +
+      "<path class='br-bolt' d='M17 27 l-1.4 4 2-.8 -1 3.6 2.6-4.4 -2 .6z'/>" +
+      "</svg>";
+    function create() {
+      var el = document.createElement("span");
+      el.className = "dbrain";
+      el.innerHTML = SVG;
+      el.title = "Brain — lights up when Darius reads, searches or learns";
+      var t = null;
+      el.zap = function () {          // one burst of electricity, re-triggerable
+        el.classList.remove("zap"); void el.offsetWidth; el.classList.add("zap");
+        clearTimeout(t); t = setTimeout(function () { el.classList.remove("zap"); }, 950);
+      };
+      el.hot = function (on) { el.classList.toggle("hot", !!on); };
+      return el;
+    }
+    return { create: create };
+  })();
+
 
   // Version comes from the server (/api/version -> dariusai.__version__), so
   // the title bar badge and the About box can never claim a version the
@@ -2740,7 +3068,139 @@
       "<span>“what do you already know about SQLite?”</span>" +
       "</div>";
     messagesEl.appendChild(welcome);
+    var welcomeMark = welcome.querySelector(".mark");
+    welcomeMark.textContent = "";
+    welcomeMark.appendChild(DariusFace.create("greeting", 78));
 
+    // ---- Darius status bar ----------------------------------------------
+    // The robot shows what the agent is doing right now, from the same
+    // events the thinking box gets; the brain beside it flickers whenever
+    // the real brain fires (activity bus), and glows for the whole turn.
+    var dariusBar = document.createElement("div");
+    dariusBar.className = "darius-bar";
+    var dFace = DariusFace.create("idle", 50);
+    var dBrain = DariusBrain.create();
+    var dText = document.createElement("div");
+    dText.className = "darius-bar-text";
+    dText.innerHTML = "<span class='darius-bar-name'>Darius</span><span class='darius-bar-state'>ready</span>";
+    var dState = dText.querySelector(".darius-bar-state");
+    var dSpacer = document.createElement("span");
+    dSpacer.className = "darius-bar-spacer";
+    dariusBar.appendChild(dFace);
+    dariusBar.appendChild(dText);
+    dariusBar.appendChild(dSpacer);
+    dariusBar.appendChild(dBrain);
+
+    var darius = (function () {
+      var busy = false, holdTimer = null, sleepTimer = null, turn = null, lastSkill = "";
+      var SLEEP_AFTER_MS = 3 * 60 * 1000;
+      var QUIPS = ["beep boop — ready when you are", "all systems green", "what are we building?",
+                   "ask me anything — I've got skills", "I don't sleep. Much.",
+                   "click the brain to see what I know"];
+      // Each mood stays up at least DWELL_MS while he's working: a
+      // 20 ms read_file would otherwise flash by unseen. The newest state
+      // waits its turn (older queued ones are skipped), so the face keeps
+      // pace with the work without lagging behind it.
+      var DWELL_MS = 700, lastShown = 0, pending = null, pendingTimer = null;
+      function apply(mood, detail) {
+        lastShown = Date.now();
+        dFace.setMood(mood);
+        dState.textContent = detail || DariusFace.LABELS[mood];
+        dariusBar.setAttribute("data-busy", busy ? "1" : "0");
+      }
+      function show(mood, detail) {
+        var wait = DWELL_MS - (Date.now() - lastShown);
+        if (busy && wait > 0) {
+          pending = [mood, detail];
+          if (!pendingTimer) pendingTimer = setTimeout(function () {
+            pendingTimer = null;
+            if (pending) { var p = pending; pending = null; apply(p[0], p[1]); }
+          }, wait);
+          return;
+        }
+        pending = null; clearTimeout(pendingTimer); pendingTimer = null;
+        apply(mood, detail);
+      }
+      function settle(mood, detail, ms) {      // a reaction that fades back to idle
+        clearTimeout(holdTimer);
+        show(mood, detail);
+        holdTimer = setTimeout(function () { if (!busy) show("idle"); }, ms || 6000);
+        armSleep();
+      }
+      function armSleep() {
+        clearTimeout(sleepTimer);
+        sleepTimer = setTimeout(function () { if (!busy) show("sleeping"); }, SLEEP_AFTER_MS);
+      }
+      function shorten(s, n) { s = String(s || "").replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n - 1) + "…" : s; }
+      function toolDetail(name, input) {
+        input = input || {};
+        var arg = input.path || input.command || input.query || input.topic || input.name || input.skill_id || "";
+        if (input.path) arg = String(arg).split(/[\\/]/).filter(Boolean).slice(-2).join("/");
+        return name + (arg ? " · " + shorten(arg, 48) : "");
+      }
+      armSleep();
+      return {
+        turnStart: function (userText) {
+          busy = true; clearTimeout(holdTimer); clearTimeout(sleepTimer);
+          turn = { userText: userText, wroteCode: false, learned: false, error: false };
+          lastShown = 0;                 // react to Send at once, not after a dwell
+          show("thinking", "thinking…");
+          dBrain.hot(true);
+        },
+        onChat: function (data) {
+          if (data.type === "reasoning") {
+            show("thinking", "thinking: " + shorten(data.text, 70));
+          } else if (data.type === "tool_call_start") {
+            if (turn && /^(write_file|create_project|edit_file)$/.test(data.name)) turn.wroteCode = true;
+            if (turn && data.name === "learn_skill") turn.learned = true;
+            show(DariusFace.moodForTool(data.name), toolDetail(data.name, data.input));
+          } else if (data.type === "tool_call_result") {
+            if (/^ERROR/.test(String(data.result))) show("confused", "that didn't work — trying again");
+          } else if (data.type === "assistant_text" && !data.is_final) {
+            show("talking", shorten(data.text, 70));
+          } else if (data.type === "assistant_text" && data.is_final) {
+            busy = false; dBrain.hot(false);
+            var mood = DariusFace.reactionFor(data.text, turn && turn.userText, turn);
+            settle(mood, DariusFace.LABELS[mood]);
+            turn = null;
+            return mood;
+          } else if (data.type === "error") {
+            busy = false; dBrain.hot(false);
+            if (turn) turn.error = true;
+            settle("error", shorten(data.message, 70), 9000);
+            turn = null;
+          }
+          return null;
+        },
+        listening: function () { if (!busy) { clearTimeout(holdTimer); show("listening"); armSleep(); } },
+        idle: function () { if (!busy) show("idle"); },
+        disconnected: function () { busy = false; dBrain.hot(false); show("sleeping", "offline — reconnecting…"); },
+        mirror: function (mood) { if (!busy) settle(mood, DariusFace.LABELS[mood], 2500); },
+        poke: function () {
+          if (busy) return;
+          settle("greeting", QUIPS[Math.floor(Math.random() * QUIPS.length)], 3000);
+        },
+        brainEvent: function (ev) {
+          if (ev.replay) return;
+          if (ev.kind === "agent_turn") { dBrain.hot(ev.phase === "start"); return; }
+          if (/^(skill_used|brain_search|skill_learned|conversation_logged|node_edited|tool_start)$/.test(ev.kind)) dBrain.zap();
+          if (ev.kind === "skill_used") lastSkill = ev.label || ev.id;
+        },
+        brainInfo: function () {
+          dBrain.zap();
+          fetch("/api/graph").then(function (r) { return r.json(); }).then(function (g) {
+            if (busy) return;
+            settle("reading", g.counts.nodes + " nodes · " + g.counts.edges + " links" +
+                   (lastSkill ? " · last used: " + lastSkill : ""), 4000);
+          }).catch(function () {});
+        },
+      };
+    })();
+    dFace.addEventListener("click", function () { darius.poke(); });
+    dBrain.addEventListener("click", function () { darius.brainInfo(); });
+    EventStream.on(function (ev) { darius.brainEvent(ev); });
+
+    wrap.appendChild(dariusBar);
     wrap.appendChild(todosEl);
     wrap.appendChild(messagesEl);
     // Token stats footer — at the very bottom, above the input row.
@@ -3035,7 +3495,7 @@
       if (welcome && welcome.parentNode) welcome.parentNode.removeChild(welcome);
     }
 
-    function appendMessage(role, text) {
+    function appendMessage(role, text, mood) {
       dismissWelcome();
       messageCount++;
       var el = document.createElement("div");
@@ -3052,6 +3512,19 @@
             el.appendChild(makeCodeBlock(seg.lang, seg.code, messageCount));
           }
         });
+        if (mood) {
+          // How Darius felt about this answer. Click it and he does it
+          // again, and the big Darius in the bar mirrors it.
+          var react = document.createElement("div");
+          react.className = "chat-reaction";
+          var face = DariusFace.create(mood, 34);
+          face.addEventListener("click", function () {
+            face.setMood("idle"); void face.offsetWidth; face.setMood(mood);
+            darius.mirror(mood);
+          });
+          react.appendChild(face);
+          el.appendChild(react);
+        }
       } else {
         el.textContent = text;
       }
@@ -3083,12 +3556,13 @@
       thinkingBox.className = "chat-thinking";
       thinkingBox.innerHTML =
         "<div class='chat-thinking-head'>" +
-        "<span class='chat-thinking-icon'>🤭</span>" +
+        "<span class='chat-thinking-icon'></span>" +
         "<span class='chat-thinking-label'>thinking…</span>" +
         "<span class='chat-thinking-count'>0</span>" +
         "<span class='chat-thinking-toggle'>►</span>" +
         "</div>" +
         "<div class='chat-thinking-body'></div>";
+      thinkingBox.querySelector(".chat-thinking-icon").appendChild(DariusFace.create("thinking", 30));
       var head = thinkingBox.querySelector(".chat-thinking-head");
       head.addEventListener("click", function () {
         thinkingBox.classList.toggle("open");
@@ -3112,8 +3586,8 @@
       if (!thinkingBox) return;
       var label = thinkingBox.querySelector(".chat-thinking-label");
       if (label) label.textContent = "thought";
-      var icon = thinkingBox.querySelector(".chat-thinking-icon");
-      if (icon) icon.textContent = "✓";
+      var mini = thinkingBox.querySelector(".chat-thinking-icon .db");
+      if (mini) mini.setMood("idle");    // done thinking: the little face relaxes
       thinkingBox.classList.add("done");
       thinkingBox = null;
     }
@@ -3168,16 +3642,18 @@
     function connect() {
       var proto = location.protocol === "https:" ? "wss:" : "ws:";
       ws = new WebSocket(proto + "//" + location.host + "/ws/chat");
+      ws.addEventListener("open", function () { darius.idle(); });
       ws.onmessage = function (ev) {
         var data;
         try { data = JSON.parse(ev.data); } catch (e) { return; }
+        var reaction = darius.onChat(data);   // the robot follows every event
         if (data.type === "error") {
           closeThinkingBox();
           appendPlain("system", data.message);
         } else if (data.type === "assistant_text") {
           if (data.is_final) {
             closeThinkingBox();
-            appendMessage("assistant", data.text);
+            appendMessage("assistant", data.text, reaction);
           } else {
             appendThinkingStep("text", data.text);
           }
@@ -3211,6 +3687,7 @@
       };
       ws.onclose = function () {
         closeThinkingBox();
+        darius.disconnected();
         appendPlain("system", "connection closed — reconnecting…");
         setTimeout(connect, 2000);
       };
@@ -3223,6 +3700,8 @@
       if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
       appendMessage("user", text);
       openThinkingBox();   // open immediately so the user sees agent activity
+      // Slash commands are handled by the server without a model turn.
+      if (text.charAt(0) !== "/") darius.turnStart(text);
       // Reset the phases panel for the new query — the agent will
       // re-populate it as it figures out the work.
       renderTodos([]);
@@ -3869,6 +4348,10 @@
     }
 
     wrap.querySelector("#chatSend").addEventListener("click", send);
+    // Darius looks down at what you're typing (and wakes up if he dozed off).
+    wrap.querySelector("#chatInput").addEventListener("input", function (ev) {
+      if (ev.target.value) darius.listening(); else darius.idle();
+    });
     var chatInputEl = wrap.querySelector("#chatInput");
     chatInputEl.addEventListener("keydown", function (ev) {
       // Picker intercepts the four arrow keys + Enter + Esc while it's
