@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- The app version this page was built with; tools/bump_version.py keeps it in step. -->
-<meta name="dariusai-version" content="0.97.0a0">
+<meta name="dariusai-version" content="0.98.0a0">
 <title>DariusAI</title>
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="stylesheet" href="/vendor/codemirror/codemirror.min.css">
@@ -842,6 +842,43 @@
   .chat-reaction .db:hover { filter: drop-shadow(0 0 6px rgba(125,211,252,0.6)); }
   .chat-thinking-icon .db { margin: -6px -2px -6px -4px; }
   .chat-welcome .mark .db { filter: drop-shadow(0 0 16px rgba(110,168,255,0.45)); }
+
+  /* ---- sessions: buttons in the Darius bar, the dropdown, the full list -- */
+  .darius-bar { position: relative; }
+  .darius-bar-btn { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10); color: #c3c9e6;
+    font: 600 11px/1 -apple-system, "Segoe UI", system-ui, sans-serif; border-radius: 7px; padding: 6px 9px; cursor: pointer; white-space: nowrap; }
+  .darius-bar-btn:hover { background: rgba(125,211,252,0.12); color: #eaf4ff; }
+  .sess-dd { position: absolute; top: calc(100% + 4px); right: 8px; z-index: 50; width: min(340px, calc(100% - 16px));
+    background: #0f1226; border: 1px solid rgba(160,175,255,0.22); border-radius: 12px; padding: 6px;
+    box-shadow: 0 18px 40px -12px rgba(0,0,0,0.8); }
+  .sess-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; cursor: pointer; }
+  .sess-row:hover { background: rgba(125,211,252,0.08); }
+  .sess-row.current { background: rgba(59,91,219,0.18); }
+  .sess-row-main { min-width: 0; flex: 1; display: grid; }
+  .sess-title { color: #dfe6ff; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sess-meta { color: #6b739a; font-size: 11px; }
+  .sess-empty { color: #6b739a; font-size: 12px; padding: 10px; text-align: center; }
+  .sess-dd-foot { border-top: 1px solid rgba(255,255,255,0.07); margin-top: 4px; padding: 6px 6px 2px; display: flex; justify-content: space-between; }
+  .sess-link { background: none; border: 0; color: #7dd3fc; font: 600 12px -apple-system, "Segoe UI", system-ui, sans-serif; cursor: pointer; padding: 4px 2px; }
+  .sess-link:hover { text-decoration: underline; }
+  .sess-star { background: none; border: 0; padding: 2px; cursor: pointer; line-height: 0; flex: none; }
+  .sess-star svg { width: 17px; height: 17px; fill: none; stroke: #8b93b8; stroke-width: 1.6; stroke-linejoin: round; transition: transform 0.15s; }
+  .sess-star:hover svg { stroke: #fbbf24; transform: scale(1.12); }
+  .sess-star.on svg { fill: #fbbf24; stroke: #fbbf24; filter: drop-shadow(0 0 3px rgba(251,191,36,0.5)); }
+  .sess-page { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; }
+  .sess-page-box { width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 64px); display: flex; flex-direction: column;
+    background: #0b0e20; border: 1px solid rgba(160,175,255,0.22); border-radius: 14px; box-shadow: 0 30px 80px -20px rgba(0,0,0,0.9); }
+  .sess-page-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+  .sess-page-head h3 { margin: 0; font: 650 15px -apple-system, "Segoe UI", system-ui, sans-serif; color: #e6e9f8; flex: 1; }
+  .sess-page-head input { background: #050a18; border: 1px solid rgba(255,255,255,0.12); color: #e6e9f8; border-radius: 8px; padding: 7px 10px; font-size: 12.5px; width: 200px; }
+  .sess-page-list { overflow-y: auto; padding: 8px; }
+  .sess-page-list .sess-row { padding: 9px 10px; }
+  .sess-del { background: none; border: 1px solid transparent; color: #8b93b8; border-radius: 7px; padding: 5px 9px; cursor: pointer; font-size: 12px; }
+  .sess-del:hover { color: #f87171; border-color: rgba(248,113,113,0.4); }
+  .sess-del.confirm { color: #fff; background: #b91c1c; border-color: #b91c1c; }
+  .sess-filter.on { color: #fbbf24; border-color: rgba(251,191,36,0.5); }
+  #chatSend.stop { background: #b91c1c; }
+  #chatSend.stop:hover { background: #dc2626; }
 </style>
 </head>
 <body>
@@ -3180,6 +3217,10 @@
             if (/^ERROR/.test(String(data.result))) show("confused", "that didn't work — trying again");
           } else if (data.type === "assistant_text" && !data.is_final) {
             show("talking", shorten(data.text, 70));
+          } else if (data.type === "assistant_text" && data.is_final && data.stopped) {
+            busy = false; dBrain.hot(false); turn = null;
+            settle("idle", "stopped — say continue to resume");
+            return "idle";
           } else if (data.type === "assistant_text" && data.is_final) {
             busy = false; dBrain.hot(false);
             var mood = DariusFace.reactionFor(data.text, turn && turn.userText, turn);
@@ -3221,6 +3262,190 @@
     dFace.addEventListener("click", function () { darius.poke(); });
     dBrain.addEventListener("click", function () { darius.brainInfo(); });
     EventStream.on(function (ev) { darius.brainEvent(ev); });
+
+    // ---- sessions ---------------------------------------------------------
+    // Every conversation is saved after each turn; the latest reopens on
+    // launch (so closing the app by accident loses nothing). ＋ starts a
+    // fresh one, Sessions ▾ lists the last five, "See full list" opens a page
+    // where sessions can be opened, starred or deleted.
+    var currentSession = { id: null, title: "" };
+    var STAR_SVG = "<svg viewBox='0 0 24 24'><path d='M12 2.8l2.85 5.8 6.4.93-4.63 4.5 1.1 6.37L12 17.4l-5.72 3l1.1-6.37-4.63-4.5 6.4-.93z'/></svg>";
+    var newBtn = document.createElement("button");
+    newBtn.className = "darius-bar-btn"; newBtn.textContent = "＋ New"; newBtn.title = "Start a new session";
+    var sessBtn = document.createElement("button");
+    sessBtn.className = "darius-bar-btn"; sessBtn.textContent = "Sessions ▾"; sessBtn.title = "Recent sessions";
+    dariusBar.insertBefore(newBtn, dBrain);
+    dariusBar.insertBefore(sessBtn, dBrain);
+    var sessDd = null;
+
+    function sendControl(msg) {
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+    }
+    function ago(t) {
+      var s = Math.max(0, Date.now() / 1000 - t);
+      if (s < 60) return "just now";
+      if (s < 3600) return Math.floor(s / 60) + " min ago";
+      if (s < 86400) return Math.floor(s / 3600) + " h ago";
+      if (s < 86400 * 7) return Math.floor(s / 86400) + " d ago";
+      return new Date(t * 1000).toLocaleDateString();
+    }
+    function starButton(sess, onChange) {
+      var b = document.createElement("button");
+      b.className = "sess-star" + (sess.favorite ? " on" : "");
+      b.innerHTML = STAR_SVG;
+      b.title = sess.favorite ? "Unstar" : "Star";
+      b.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        var fav = !b.classList.contains("on");
+        b.classList.toggle("on", fav); b.title = fav ? "Unstar" : "Star";
+        fetch("/api/sessions/" + encodeURIComponent(sess.id) + "/favorite", {
+          method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ favorite: fav }),
+        }).then(function () { sess.favorite = fav; if (onChange) onChange(); })
+          .catch(function () { b.classList.toggle("on", !fav); });
+      });
+      return b;
+    }
+    function sessionRow(sess, opts) {
+      var row = document.createElement("div");
+      row.className = "sess-row" + (sess.id === currentSession.id ? " current" : "");
+      row.appendChild(starButton(sess, opts && opts.onStar));
+      var main = document.createElement("div");
+      main.className = "sess-row-main";
+      var t = document.createElement("span"); t.className = "sess-title"; t.textContent = sess.title;
+      var m = document.createElement("span"); m.className = "sess-meta";
+      m.textContent = ago(sess.updated_at) + " · " + sess.turns + (sess.turns === 1 ? " message" : " messages") +
+                      (sess.id === currentSession.id ? " · open now" : "");
+      main.appendChild(t); main.appendChild(m);
+      row.appendChild(main);
+      row.addEventListener("click", function () {
+        closeSessDd();
+        if (opts && opts.close) opts.close();
+        if (sess.id !== currentSession.id) sendControl({ type: "session_open", id: sess.id });
+      });
+      return row;
+    }
+    function closeSessDd() { if (sessDd) { sessDd.remove(); sessDd = null; } }
+    function openSessDd() {
+      if (sessDd) { closeSessDd(); return; }
+      sessDd = document.createElement("div");
+      sessDd.className = "sess-dd";
+      sessDd.innerHTML = "<div class='sess-empty'>loading…</div>";
+      dariusBar.appendChild(sessDd);
+      fetch("/api/sessions?limit=5").then(function (r) { return r.json(); }).then(function (list) {
+        if (!sessDd) return;
+        sessDd.innerHTML = "";
+        if (!list.length) sessDd.innerHTML = "<div class='sess-empty'>No saved sessions yet — they appear after the first answer.</div>";
+        list.forEach(function (sess) { sessDd.appendChild(sessionRow(sess)); });
+        var foot = document.createElement("div");
+        foot.className = "sess-dd-foot";
+        var all = document.createElement("button"); all.className = "sess-link"; all.textContent = "See full list →";
+        all.addEventListener("click", function () { closeSessDd(); openSessionsPage(); });
+        var nw = document.createElement("button"); nw.className = "sess-link"; nw.textContent = "＋ New session";
+        nw.addEventListener("click", function () { closeSessDd(); newSession(); });
+        foot.appendChild(nw); foot.appendChild(all);
+        sessDd.appendChild(foot);
+      }).catch(function () { if (sessDd) sessDd.innerHTML = "<div class='sess-empty'>couldn't load sessions</div>"; });
+    }
+    document.addEventListener("mousedown", function (ev) {
+      if (sessDd && !sessDd.contains(ev.target) && ev.target !== sessBtn) closeSessDd();
+    });
+
+    function openSessionsPage() {
+      var page = document.createElement("div");
+      page.className = "sess-page";
+      page.innerHTML =
+        "<div class='sess-page-box'>" +
+          "<div class='sess-page-head'><h3>Sessions</h3>" +
+            "<button class='darius-bar-btn sess-filter' title='Show only starred sessions'>★ Starred</button>" +
+            "<input type='search' placeholder='search…'>" +
+            "<button class='darius-bar-btn' data-close>Close</button></div>" +
+          "<div class='sess-page-list'><div class='sess-empty'>loading…</div></div>" +
+        "</div>";
+      document.body.appendChild(page);
+      var listEl = page.querySelector(".sess-page-list");
+      var search = page.querySelector("input");
+      var filterBtn = page.querySelector(".sess-filter");
+      var all = [], starredOnly = false;
+      function close() { page.remove(); document.removeEventListener("keydown", onKey); }
+      function onKey(ev) { if (ev.key === "Escape") close(); }
+      document.addEventListener("keydown", onKey);
+      page.addEventListener("mousedown", function (ev) { if (ev.target === page) close(); });
+      page.querySelector("[data-close]").addEventListener("click", close);
+      function render() {
+        var q = search.value.trim().toLowerCase();
+        var shown = all.filter(function (s) {
+          return (!starredOnly || s.favorite) && (!q || s.title.toLowerCase().indexOf(q) >= 0);
+        });
+        // starred first, then most recent
+        shown.sort(function (a, b) { return (b.favorite - a.favorite) || (b.updated_at - a.updated_at); });
+        listEl.innerHTML = "";
+        if (!shown.length) {
+          listEl.innerHTML = "<div class='sess-empty'>" + (all.length ? "Nothing matches." : "No saved sessions yet.") + "</div>";
+          return;
+        }
+        shown.forEach(function (sess) {
+          var row = sessionRow(sess, { close: close, onStar: render });
+          var del = document.createElement("button");
+          del.className = "sess-del"; del.textContent = "Delete";
+          var armed = null;
+          del.addEventListener("click", function (ev) {
+            ev.stopPropagation();
+            if (!del.classList.contains("confirm")) {     // two clicks: no accidental deletes
+              del.classList.add("confirm"); del.textContent = "Delete — sure?";
+              armed = setTimeout(function () { del.classList.remove("confirm"); del.textContent = "Delete"; }, 3000);
+              return;
+            }
+            clearTimeout(armed);
+            fetch("/api/sessions/" + encodeURIComponent(sess.id), { method: "DELETE" }).then(function (r) {
+              if (!r.ok) throw new Error();
+              all = all.filter(function (s) { return s.id !== sess.id; });
+              if (sess.id === currentSession.id) newSession();   // deleting the open one starts fresh
+              render();
+            }).catch(function () { del.textContent = "couldn't delete"; });
+          });
+          row.appendChild(del);
+          listEl.appendChild(row);
+        });
+      }
+      search.addEventListener("input", render);
+      filterBtn.addEventListener("click", function () { starredOnly = !starredOnly; filterBtn.classList.toggle("on", starredOnly); render(); });
+      fetch("/api/sessions").then(function (r) { return r.json(); }).then(function (list) { all = list; render(); })
+        .catch(function () { listEl.innerHTML = "<div class='sess-empty'>couldn't load sessions</div>"; });
+      setTimeout(function () { search.focus(); }, 0);
+    }
+
+    function newSession() {
+      if (turnBusy) sendControl({ type: "stop" });
+      sendControl({ type: "session_new" });
+    }
+    function showSession(msg) {
+      currentSession = { id: msg.id, title: msg.title || "" };
+      closeThinkingBox();
+      while (messagesEl.firstChild) messagesEl.removeChild(messagesEl.firstChild);
+      messageCount = 0;
+      setBusy(false);
+      var items = msg.display || [];
+      if (!items.length) { messagesEl.appendChild(welcome); darius.idle(); return; }
+      var lastUser = "";
+      items.forEach(function (d) {
+        if (d.role === "user") { lastUser = d.text; appendMessage("user", d.text); }
+        else appendMessage("assistant", d.text, DariusFace.reactionFor(d.text, lastUser, null));
+      });
+      darius.idle();
+    }
+    newBtn.addEventListener("click", newSession);
+    sessBtn.addEventListener("click", openSessDd);
+
+    // Send turns into Stop while a turn is running.
+    var turnBusy = false;
+    function setBusy(on) {
+      turnBusy = !!on;
+      var b = document.getElementById("chatSend");
+      if (!b) return;
+      b.classList.toggle("stop", turnBusy);
+      b.textContent = turnBusy ? "Stop" : "Send";
+      b.title = turnBusy ? "Stop Darius at his next step" : "";
+    }
 
     wrap.appendChild(dariusBar);
     wrap.appendChild(todosEl);
@@ -3695,6 +3920,13 @@
           }
           data = Object.assign({}, data, { text: split.answer || "(no response)" });
         }
+        if (data.type === "session_loaded") { showSession(data); return; }
+        if (data.type === "permission_resolved") {
+          // answered from the tray (or another window): close our copy
+          document.querySelectorAll("[data-perm-req='" + data.request_id + "']").forEach(function (o) { o.remove(); });
+          return;
+        }
+        if (data.type === "error" || (data.type === "assistant_text" && data.is_final)) setBusy(false);
         var reaction = darius.onChat(data);   // the robot follows every event
         if (data.type === "error") {
           closeThinkingBox();
@@ -3736,6 +3968,7 @@
       };
       ws.onclose = function () {
         closeThinkingBox();
+        setBusy(false);
         darius.disconnected();
         appendPlain("system", "connection closed — reconnecting…");
         setTimeout(connect, 2000);
@@ -3750,7 +3983,7 @@
       appendMessage("user", text);
       openThinkingBox();   // open immediately so the user sees agent activity
       // Slash commands are handled by the server without a model turn.
-      if (text.charAt(0) !== "/") darius.turnStart(text);
+      if (text.charAt(0) !== "/") { darius.turnStart(text); setBusy(true); }
       // Reset the phases panel for the new query — the agent will
       // re-populate it as it figures out the work.
       renderTodos([]);
@@ -4396,7 +4629,14 @@
       }
     }
 
-    wrap.querySelector("#chatSend").addEventListener("click", send);
+    wrap.querySelector("#chatSend").addEventListener("click", function () {
+      if (turnBusy) {
+        sendControl({ type: "stop" });
+        this.textContent = "Stopping…";
+        return;
+      }
+      send();
+    });
     // Darius looks down at what you're typing (and wakes up if he dozed off).
     wrap.querySelector("#chatInput").addEventListener("input", function (ev) {
       if (ev.target.value) darius.listening(); else darius.idle();
@@ -6234,6 +6474,9 @@
     "show-help": function () { openModal("help"); },
     "show-about": function () { openModal("about"); },
   };
+  // The tray menu (Python, outside the page) runs the same actions as the
+  // page's own menus through this one entry point.
+  window.__menuAction = function (name) { if (MENU_ACTIONS[name]) MENU_ACTIONS[name](); };
   document.querySelectorAll(".menu-item").forEach(function (item) {
     item.addEventListener("click", function () {
       closeAllMenus();

@@ -252,7 +252,7 @@ def main() -> None:
         from dariusai.os_integration import apply_window_icon
         from dariusai.viz.tray import start_tray_icon
         apply_window_icon()
-        start_tray_icon(window, api)
+        start_tray_icon(window, api, base_url=f"http://127.0.0.1:{splash.bound_port}")
 
     webview.start(on_ready, icon=str(ICON_PATH) if ICON_PATH.exists() else None)
     api.quit()  # the window is gone; nothing (tray, server, agent threads) outlives it

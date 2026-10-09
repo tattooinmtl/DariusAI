@@ -1129,6 +1129,8 @@ def test_reload_llm_side_effect_emits_llm_reloaded_event(tmp_path, monkeypatch):
     assert r.status_code == 200, r.text
 
     with client.websocket_connect("/ws/chat") as ws:
+        # Every chat socket opens with the session it resumed (or a fresh one).
+        assert ws.receive_json()["type"] == "session_loaded"
         ws.send_json({"type": "command", "name": "provider",
                       "args": ["anthropic"], "request_id": "r1"})
         first = ws.receive_json()
@@ -1157,6 +1159,8 @@ def test_cd_side_effect_changes_project_dir(tmp_path):
     app = create_app(home=home, project_dir=project_dir, llm=mock_llm)
     client = TestClient(app)
     with client.websocket_connect("/ws/chat") as ws:
+        # Every chat socket opens with the session it resumed (or a fresh one).
+        assert ws.receive_json()["type"] == "session_loaded"
         ws.send_json({"type": "command", "name": "cd",
                       "args": ["sub"], "request_id": "r1"})
         first = ws.receive_json()

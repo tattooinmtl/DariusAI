@@ -32,6 +32,7 @@ from ..agent.tools import build_tool_registry
 from ..brain.skill import Skill, Source
 from ..brain.store import CONVERSATIONS_ROOT, COORDINATOR_ID, BrainStore
 from ..events.bus import bus
+from .permissions import PermissionCenter
 
 STATIC_DIR = Path(__file__).parent / "static"
 MAX_FILE_BYTES = 2_000_000
@@ -377,7 +378,47 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
     # process has been up — which is also how you spot an app still running
     # an older build.
     app.state.started_at = time.time()
+    # Open permission requests from every chat window, so the tray can list
+    # and answer them too (see viz/permissions.py).
+    app.state.permissions = PermissionCenter()
     app.mount("/vendor", StaticFiles(directory=STATIC_DIR / "vendor"), name="vendor")
+
+    # ---- permissions, stop, sessions (also what the tray menu calls) -----
+
+    @app.get("/api/permissions")
+    def list_permissions():
+        return app.state.permissions.active()
+
+    @app.post("/api/permissions/{req_id}")
+    def answer_permission(req_id: str, body: dict[str, Any]):
+        if not app.state.permissions.resolve(req_id, bool(body.get("allow"))):
+            raise HTTPException(404, "that request was already answered or has expired")
+        return {"ok": True}
+
+    @app.post("/api/chat/stop")
+    def stop_chat():
+        """Stop every running agent turn at its next step."""
+        with app.state.chat_sessions_lock:
+            sessions = list(app.state.chat_sessions)
+        for s in sessions:
+            s.cancel()
+        return {"stopped": len(sessions)}
+
+    @app.get("/api/sessions")
+    def list_sessions(limit: int = 0):
+        return store.list_chat_sessions(limit or None)
+
+    @app.delete("/api/sessions/{session_id}")
+    def delete_session(session_id: str):
+        if not store.delete_chat_session(session_id):
+            raise HTTPException(404, f"no session {session_id!r}")
+        return {"ok": True}
+
+    @app.put("/api/sessions/{session_id}/favorite")
+    def favorite_session(session_id: str, body: dict[str, Any]):
+        if not store.set_chat_session_favorite(session_id, bool(body.get("favorite"))):
+            raise HTTPException(404, f"no session {session_id!r}")
+        return {"ok": True, "favorite": bool(body.get("favorite"))}
 
     @app.get("/")
     def index():
@@ -905,6 +946,26 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
                 fut: asyncio.Future = loop.create_future()
                 pending_permissions[req_id] = fut
 
+                # Register with the app-wide center too, so the tray can
+                # list and answer it. Whichever side answers first settles
+                # it; the window is then told to close its modal.
+                def _resolve(allow: bool, req_id: str = req_id) -> None:
+                    def _set() -> None:
+                        f = pending_permissions.pop(req_id, None)
+                        if f is not None and not f.done():
+                            f.set_result(allow)
+                    loop.call_soon_threadsafe(_set)
+
+                def _settled(rid: str) -> None:
+                    async def _tell():
+                        try:
+                            await ws.send_json({"type": "permission_resolved", "request_id": rid})
+                        except Exception:
+                            pass
+                    asyncio.run_coroutine_threadsafe(_tell(), loop)
+
+                app.state.permissions.add(req_id, path, reason, _resolve, _settled)
+
                 async def _send():
                     try:
                         await ws.send_json({
@@ -928,6 +989,7 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
                     ).result()
                 except (asyncio.TimeoutError, Exception):
                     pending_permissions.pop(req_id, None)
+                    app.state.permissions.discard(req_id)
                     return False
 
         sandbox.broker = WSBroker()
@@ -983,15 +1045,50 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
                         pass
                     if isinstance(parsed_in, dict) and parsed_in.get("type") == "permission_response":
                         req_id = str(parsed_in.get("request_id", ""))
-                        fut = pending_permissions.pop(req_id, None)
-                        if fut is not None and not fut.done():
-                            fut.set_result(bool(parsed_in.get("allow")))
+                        allow = bool(parsed_in.get("allow"))
+                        # Through the center, so the tray's copy goes away too.
+                        if not app.state.permissions.resolve(req_id, allow):
+                            fut = pending_permissions.pop(req_id, None)
+                            if fut is not None and not fut.done():
+                                fut.set_result(allow)
+                        continue
+                    if isinstance(parsed_in, dict) and parsed_in.get("type") == "stop":
+                        # Handled here, not queued: the turn it stops is the
+                        # one keeping the main loop busy.
+                        session.cancel()
                         continue
                     await user_msg_queue.put(raw_in)
             except WebSocketDisconnect:
                 await user_msg_queue.put(None)
             except Exception:
                 await user_msg_queue.put(None)
+
+        # ---- saved sessions -------------------------------------------
+        # `display` is what the chat panel shows (user prompts, final
+        # answers); session.messages is the model's history. Both are saved
+        # after every turn, so closing the app — on purpose or not — loses
+        # nothing, and the latest session reopens on connect.
+        display: list[dict[str, Any]] = []
+
+        def _session_title() -> str:
+            first = next((d["text"] for d in display if d.get("role") == "user"), "")
+            first = " ".join(str(first).split())
+            return (first[:60] + "…") if len(first) > 60 else first
+
+        def _save_session() -> None:
+            if display:
+                store.save_chat_session(session.session_id, _session_title(), session.messages, display)
+
+        def _open_session(rec: dict[str, Any] | None) -> dict[str, Any]:
+            session.messages[:] = rec["messages"] if rec else []
+            session.session_id = rec["id"] if rec else uuid.uuid4().hex[:12]
+            display[:] = rec["display"] if rec else []
+            return {"type": "session_loaded", "id": session.session_id,
+                    "title": rec["title"] if rec else "", "favorite": bool(rec and rec["favorite"]),
+                    "display": list(display)}
+
+        latest = store.list_chat_sessions(1)
+        await ws.send_json(_open_session(store.get_chat_session(latest[0]["id"]) if latest else None))
 
         with app.state.chat_sessions_lock:
             app.state.chat_sessions.append(session)
@@ -1026,6 +1123,16 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
                     # Not JSON, or not a dict — treat as plain user text.
                     pass
 
+                if isinstance(parsed, dict) and parsed.get("type") in ("session_new", "session_open"):
+                    rec = None
+                    if parsed["type"] == "session_open":
+                        rec = store.get_chat_session(str(parsed.get("id", "")))
+                        if rec is None:
+                            await ws.send_json({"type": "error", "message": "that session no longer exists"})
+                            continue
+                    await ws.send_json(_open_session(rec))
+                    continue
+
                 if isinstance(parsed, dict) and parsed.get("type") == "compact":
                     result = await asyncio.to_thread(session.compact, force=True)
                     await ws.send_json({"type": "context_compacted", **result})
@@ -1050,7 +1157,6 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
                         is_cmd = True
                         cmd_name = parts[0].lstrip("/")
                         cmd_args = parts[1:]
-                        import time
                         cmd_req_id = f"cmd-{int(time.time()*1000)}"
 
                 if is_cmd and cmd_name:
@@ -1143,13 +1249,35 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
                     finally:
                         loop.call_soon_threadsafe(queue.put_nowait, {"type": "_turn_done"})
 
+                async def _save() -> None:
+                    try:
+                        await asyncio.to_thread(_save_session)
+                    except Exception:
+                        pass  # a failed save must never break the chat
+
                 send_task = asyncio.create_task(run_send())
+                # Saved when the prompt goes in and again the moment the answer
+                # arrives — not at the end of the turn's bookkeeping, which a
+                # window closed right after the answer would never reach.
+                display.append({"role": "user", "text": text, "at": time.time()})
+                await _save()
+                answered = False
                 while True:
                     ev = await queue.get()
                     if ev.get("type") == "_turn_done":
                         break
+                    final = None
+                    if ev.get("type") == "assistant_text" and ev.get("is_final"):
+                        final = ev.get("text", "")
+                    elif ev.get("type") == "error" and not answered:
+                        final = "⚠ " + str(ev.get("message", "error"))
+                    if final is not None:
+                        answered = True
+                        display.append({"role": "assistant", "text": final, "at": time.time()})
+                        await _save()
                     await ws.send_json(ev)
                 await send_task
+                await _save()   # history now includes the whole turn
         except WebSocketDisconnect:
             pass
         finally:
@@ -1161,6 +1289,7 @@ def create_app(home: Path | str, project_dir: Path | str | None = None, llm: Any
             # released, or session.send() will hang the executor forever
             # and the process cannot shut down cleanly.
             for _rid, _fut in list(pending_permissions.items()):
+                app.state.permissions.discard(_rid)   # no window left to ask for
                 if not _fut.done():
                     _fut.set_result(False)
             pending_permissions.clear()

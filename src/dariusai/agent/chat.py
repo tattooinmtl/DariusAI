@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -155,6 +156,25 @@ class ChatSession:
     # tool_use_id -> {name, iteration, chars} for skill bodies currently
     # sitting verbatim in `messages`.
     _skill_payloads: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)
+    # Set by cancel() (the chat's Stop button, the tray's Stop). Checked
+    # before every model call and every tool call; a model call already in
+    # flight finishes first — the HTTP request can't be interrupted.
+    _cancel: threading.Event = field(default_factory=threading.Event, repr=False)
+
+    def cancel(self) -> None:
+        """Ask the running turn to stop at its next step."""
+        self._cancel.set()
+
+    def _stopped(self, emit: Callable[[dict[str, Any]], None], tool_results: list[dict[str, str]]) -> str:
+        """End a cancelled turn the way every turn ends: with a final
+        assistant_text, so the thinking box closes and the user sees why."""
+        done = len(tool_results)
+        ran = (f" {done} tool calls had already run; their results are saved." if done > 1 else
+               " 1 tool call had already run; its result is saved." if done == 1 else "")
+        note = ("Stopped." + ran +
+                " Say \"continue\" to pick up from here.")
+        emit({"type": "assistant_text", "text": note, "is_final": True, "stopped": True})
+        return note
 
     def send(self, user_text: str, on_event: EventCallback | None = None) -> str:
         """Append a user message, run the tool-calling loop until the model
@@ -181,6 +201,7 @@ class ChatSession:
         if sandbox is not None and hasattr(sandbox, "clear_external_grants"):
             sandbox.clear_external_grants()
 
+        self._cancel.clear()          # a Stop pressed between turns must not kill the next one
         self.messages.append({"role": "user", "content": user_text})
         tool_schemas = self.tools.to_anthropic_tools()
         final_text = ""
@@ -193,6 +214,9 @@ class ChatSession:
         bus.publish({"kind": "agent_turn", "phase": "start", "route": COORDINATOR_ID})
         try:
             for i in range(MAX_TOOL_ITERATIONS):
+                if self._cancel.is_set():
+                    final_text = self._stopped(emit, tool_results)
+                    break
                 # Drop skill bodies the model has already reasoned over.
                 # Runs before the compaction check because it is the
                 # cheaper lever: no LLM call, no history rewrite, and it
@@ -278,7 +302,15 @@ class ChatSession:
                           "is_final": False})
 
                 results = []
+                stopped = False
                 for call in tool_uses:
+                    if self._cancel.is_set():
+                        # Every tool_use needs a tool_result or the next call
+                        # is rejected; answer the skipped ones honestly.
+                        results.append({"type": "tool_result", "tool_use_id": call["id"],
+                                        "content": "skipped: the user pressed Stop"})
+                        stopped = True
+                        continue
                     emit({"type": "tool_call_start", "name": call["name"], "input": call["input"]})
                     output = self.tools.call(call["name"], call["input"])
                     emit({"type": "tool_call_result", "name": call["name"], "result": output})
@@ -289,6 +321,9 @@ class ChatSession:
                     # the turn.
                     self._observe(i, call, output)
                 self.messages.append({"role": "user", "content": results})
+                if stopped or self._cancel.is_set():
+                    final_text = self._stopped(emit, tool_results)
+                    break
 
                 if i == MAX_TOOL_ITERATIONS - 1:
                     # Say what was actually accomplished and how to resume.

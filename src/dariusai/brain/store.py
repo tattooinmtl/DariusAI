@@ -78,6 +78,24 @@ CREATE TABLE IF NOT EXISTS providers (
 # `content=''` makes this a contentless index: FTS stores the terms, the bodies
 # stay in their markdown files, and there is no second copy of every skill to
 # drift out of sync.
+# Chat sessions: a closed or crashed app reopens on the conversation it had,
+# and earlier ones stay one click away. `messages` is the model's own history
+# (tool calls included) so a resumed session continues with full context;
+# `display` is what the chat panel shows, so reopening one doesn't have to
+# reverse-engineer the page from tool blocks.
+CHAT_SESSIONS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS chat_sessions (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT '',
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    favorite INTEGER NOT NULL DEFAULT 0,
+    messages TEXT NOT NULL DEFAULT '[]',
+    display TEXT NOT NULL DEFAULT '[]'
+);
+CREATE INDEX IF NOT EXISTS chat_sessions_updated ON chat_sessions(updated_at);
+"""
+
 FTS_SCHEMA = """
 CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
     id UNINDEXED, label, tags, problem, solution, tokenize='porter unicode61'
@@ -98,6 +116,7 @@ class BrainStore:
         self.db_path = self.home / "brain.db"
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.executescript(SCHEMA)
+        self.conn.executescript(CHAT_SESSIONS_SCHEMA)
         self.conn.commit()
         self.fts_enabled = self._init_fts()
         self.graph = BrainGraph()
@@ -322,6 +341,53 @@ class BrainStore:
 
     def to_graph_payload(self) -> dict[str, Any]:
         return self.graph.to_payload()
+
+    # ---- chat sessions ------------------------------------------------------
+
+    def save_chat_session(self, session_id: str, title: str, messages: list, display: list) -> None:
+        now = time.time()
+        self.conn.execute(
+            "INSERT INTO chat_sessions (id, title, created_at, updated_at, messages, display) "
+            "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, "
+            "updated_at=excluded.updated_at, messages=excluded.messages, display=excluded.display",
+            (session_id, title, now, now, json.dumps(messages, default=str), json.dumps(display, default=str)),
+        )
+        self.conn.commit()
+
+    def list_chat_sessions(self, limit: int | None = None) -> list[dict[str, Any]]:
+        sql = ("SELECT id, title, created_at, updated_at, favorite, display FROM chat_sessions "
+               "ORDER BY updated_at DESC")
+        rows = self.conn.execute(sql + (" LIMIT ?" if limit else ""), ((limit,) if limit else ())).fetchall()
+        out = []
+        for sid, title, created, updated, fav, display in rows:
+            try:
+                count = sum(1 for d in json.loads(display) if d.get("role") == "user")
+            except (ValueError, TypeError, AttributeError):
+                count = 0
+            out.append({"id": sid, "title": title or "(untitled)", "created_at": created,
+                        "updated_at": updated, "favorite": bool(fav), "turns": count})
+        return out
+
+    def get_chat_session(self, session_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT id, title, created_at, updated_at, favorite, messages, display FROM chat_sessions WHERE id = ?",
+            (session_id,),
+        ).fetchone()
+        if not row:
+            return None
+        return {"id": row[0], "title": row[1], "created_at": row[2], "updated_at": row[3],
+                "favorite": bool(row[4]), "messages": json.loads(row[5] or "[]"),
+                "display": json.loads(row[6] or "[]")}
+
+    def delete_chat_session(self, session_id: str) -> bool:
+        cur = self.conn.execute("DELETE FROM chat_sessions WHERE id = ?", (session_id,))
+        self.conn.commit()
+        return cur.rowcount > 0
+
+    def set_chat_session_favorite(self, session_id: str, favorite: bool) -> bool:
+        cur = self.conn.execute("UPDATE chat_sessions SET favorite = ? WHERE id = ?", (1 if favorite else 0, session_id))
+        self.conn.commit()
+        return cur.rowcount > 0
 
     # ---- settings (key/value preferences) --------------------------------
 

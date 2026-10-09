@@ -241,7 +241,7 @@ def launch(
         from ..os_integration import apply_window_icon
         from .tray import start_tray_icon
         apply_window_icon()
-        start_tray_icon(window, api)
+        start_tray_icon(window, api, base_url=f"http://{host}:{bound_port}")
 
     if blocking:
         webview.start(on_ready, icon=str(ICON_PATH) if ICON_PATH.exists() else None)

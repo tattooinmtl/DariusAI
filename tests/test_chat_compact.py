@@ -419,6 +419,8 @@ def test_websocket_compact_action_returns_context_compacted(tmp_path):
     app = create_app(tmp_path / "brain", project_dir=tmp_path, llm=BigLLM())
     client = TestClient(app)
     with client.websocket_connect("/ws/chat") as ws:
+        # Every chat socket opens with the session it resumed (or a fresh one).
+        assert ws.receive_json()["type"] == "session_loaded"
         # First drive a chat turn so the session has a real history.
         ws.send_text("hello")
         # Drain the events until the chat turn is done.
@@ -448,6 +450,8 @@ def test_websocket_non_compact_json_falls_through_to_llm(tmp_path):
     app = create_app(tmp_path / "brain", project_dir=tmp_path, llm=ScriptedLLM([text_resp("ok")]))
     client = TestClient(app)
     with client.websocket_connect("/ws/chat") as ws:
+        # Every chat socket opens with the session it resumed (or a fresh one).
+        assert ws.receive_json()["type"] == "session_loaded"
         ws.send_text(json.dumps({"type": "something_else"}))
         # Drain events until the chat turn is done. The session
         # emits token_stats before the final assistant_text, so the
